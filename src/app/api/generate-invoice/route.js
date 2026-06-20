@@ -32,6 +32,11 @@ function fontBase64(relativePath) {
 function buildFontFaces() {
   return `
 @font-face {
+  font-family: 'NotoSans'; font-weight: 100 900; font-style: normal;
+  unicode-range: U+20B9, U+0900-097F, U+0000-00FF, U+0100-024F;
+  src: url('data:font/truetype;base64,${fontBase64("Noto_Sans/NotoSans-VariableFont_wdth,wght.ttf")}') format('truetype');
+}
+@font-face {
   font-family: 'Poppins'; font-weight: 400; font-style: normal;
   src: url('data:font/truetype;base64,${fontBase64("Poppins/Poppins-Regular.ttf")}') format('truetype');
 }
@@ -50,10 +55,6 @@ function buildFontFaces() {
 @font-face {
   font-family: 'Oswald'; font-weight: 100 900; font-style: normal;
   src: url('data:font/truetype;base64,${fontBase64("Oswald/Oswald-VariableFont_wght.ttf")}') format('truetype');
-}
-@font-face {
-  font-family: 'NotoSans'; font-weight: 100 900; font-style: normal;
-  src: url('data:font/truetype;base64,${fontBase64("Noto_Sans/NotoSans-VariableFont_wdth,wght.ttf")}') format('truetype');
 }
   `;
 }
@@ -220,12 +221,20 @@ export async function POST(request) {
     // ── Render HTML ───────────────────────────────────────────────────────────
     let html = await ejs.renderFile(TEMPLATE_PATH, templateData, { async: false });
 
-    // Strip Google Fonts requests — fonts are embedded as base64 in the CSS.
+    // Strip Google Fonts — fonts are embedded as base64 in the CSS.
     // Inline the CSS so no running server is needed.
     html = html
       .replace(/<link[^>]+fonts\.googleapis[^>]+>/g, "")
       .replace(/<link[^>]+fonts\.gstatic[^>]+>/g,   "")
       .replace(/<link[^>]+invoice\.css[^>]+>/,       cssAsInlineTag());
+
+    // Wrap every ₹ / &#x20B9; / &#8377; with a span that forces NotoSans.
+    // Chromium does not reliably fall through font families for missing glyphs
+    // in embedded fonts, so we must be explicit.
+    html = html
+      .replace(/&#x20B9;/g, '<span style="font-family:\'NotoSans\',sans-serif">₹</span>')
+      .replace(/&#8377;/g,  '<span style="font-family:\'NotoSans\',sans-serif">₹</span>')
+      .replace(/₹/g,        '<span style="font-family:\'NotoSans\',sans-serif">₹</span>');
 
     // ── Render PDF ────────────────────────────────────────────────────────────
     const browser = await getBrowser();
