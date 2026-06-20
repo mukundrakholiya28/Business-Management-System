@@ -137,6 +137,34 @@ function cssAsInlineTag() {
       "--font-brand: 'Vortice', 'Oswald', 'NotoSans', 'Archivo Black', sans-serif;"
     );
 
+  // Fix table overflow: prevent the sheet and its contents from exceeding A4 width
+  css += `
+/* ── Overflow fix ── */
+.sheet {
+  width: 100%;
+  max-width: 800px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.items {
+  padding: 32px 40px 8px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+table.items-table {
+  width: 100%;
+  max-width: 100%;
+  table-layout: fixed;
+  box-sizing: border-box;
+}
+table.items-table th,
+table.items-table td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-word;
+}
+`;
+
   return `<style>${buildFontFaces()}\n${css}</style>`;
 }
 
@@ -239,6 +267,9 @@ export async function POST(request) {
     // ── Render PDF ────────────────────────────────────────────────────────────
     const browser = await getBrowser();
     const page    = await browser.newPage();
+
+    // Set viewport to A4 width so max-width:800px on .sheet stays within page
+    await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1 });
 
     // domcontentloaded is enough — no external resources to wait for
     await page.setContent(html, { waitUntil: "domcontentloaded", timeout: 15000 });
