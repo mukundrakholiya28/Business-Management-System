@@ -171,75 +171,205 @@ export default function BillingPage() {
     const items = billItems.filter((i) => i.bill_id === bill.id);
 
     const doc = new jsPDF();
-    doc.setFontSize(20);
-    doc.setFont("helvetica", "bold");
-    doc.text("SHREE ROYAL CAR", 105, 25, { align: "center" });
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(120);
-    doc.text("Car Workshop & Service Center", 105, 31, { align: "center" });
+
+    // 1. Try to load custom Inter font for Rupee symbol support
+    let hasCustomFont = false;
+    try {
+      const response = await fetch("/Inter-Regular.ttf");
+      if (response.ok) {
+        const arrayBuffer = await response.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuffer);
+        let binary = "";
+        const len = bytes.byteLength;
+        for (let i = 0; i < len; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        const base64Font = window.btoa(binary);
+
+        doc.addFileToVFS("Inter-Regular.ttf", base64Font);
+        doc.addFont("Inter-Regular.ttf", "Inter", "normal");
+        doc.setFont("Inter", "normal");
+        hasCustomFont = true;
+      }
+    } catch (e) {
+      console.warn("Failed to load Inter font, falling back to Helvetica", e);
+    }
+
+    // Currency Formatter fallback
+    const fmt = (val) => {
+      const formatted = formatCurrency(val);
+      if (!hasCustomFont) {
+        return formatted.replace("₹", "Rs. ");
+      }
+      return formatted;
+    };
+
+    // 2. Load Logo Image
+    const loadLogo = () => {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.src = "/logo.png";
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+      });
+    };
+    const logoImg = await loadLogo();
+
+    // 3. Render Header
+    if (logoImg) {
+      doc.addImage(logoImg, "PNG", 20, 14, 16, 16);
+      doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
+      doc.setFontSize(18);
+      doc.setTextColor(17, 24, 39); // Slate 900
+      doc.text("SHREE ROYAL CAR", 40, 21);
+      
+      doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
+      doc.setFontSize(8.5);
+      doc.setTextColor(107, 114, 128); // Slate 500
+      doc.text("Car Workshop & Service Center", 40, 26);
+    } else {
+      doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
+      doc.setFontSize(20);
+      doc.setTextColor(17, 24, 39);
+      doc.text("SHREE ROYAL CAR", 20, 21);
+      
+      doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(107, 114, 128);
+      doc.text("Car Workshop & Service Center", 20, 26);
+    }
+
+    // Divider accent line
     doc.setDrawColor(79, 110, 247);
     doc.setLineWidth(0.5);
-    doc.line(20, 36, 190, 36);
-    doc.setTextColor(0);
-    doc.setFontSize(13);
-    doc.setFont("helvetica", "bold");
-    doc.text(`INVOICE #INV-${bill.bill_number}`, 20, 47);
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-    doc.text(`Date: ${formatDate(bill.created_at)}`, 20, 54);
-    doc.text(`Status: ${bill.status.toUpperCase()}`, 20, 60);
-    doc.setFont("helvetica", "bold");
-    doc.text("Bill To:", 130, 47);
-    doc.setFont("helvetica", "normal");
-    doc.text(customer?.name || "—", 130, 54);
-    doc.text(customer?.phone_number || "—", 130, 60);
-    doc.text(`Vehicle: ${vehicle?.vehicle_number || "—"}`, 130, 66);
-    doc.text(`${vehicle?.make || ""} ${vehicle?.model || ""}`, 130, 72);
+    doc.line(20, 35, 190, 35);
 
+    // 4. Render Invoice Meta & Bill To Info Cards
+    // Left card box (Invoice Meta)
+    doc.setFillColor(249, 250, 251);
+    doc.roundedRect(20, 42, 80, 32, 2, 2, "F");
+    
+    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(17, 24, 39);
+    doc.text(`INVOICE #INV-${bill.bill_number}`, 24, 49);
+    
+    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(107, 114, 128);
+    doc.text(`Date: ${formatDate(bill.created_at)}`, 24, 55);
+    doc.text(`Status: ${bill.status.toUpperCase()}`, 24, 61);
+    doc.text(`Payment: ${bill.payment_method.toUpperCase()}`, 24, 67);
+
+    // Right card box (Customer / Vehicle)
+    doc.setFillColor(249, 250, 251);
+    doc.roundedRect(110, 42, 80, 32, 2, 2, "F");
+    
+    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(156, 163, 175); // Gray 400
+    doc.text("BILL TO", 114, 49);
+    
+    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(17, 24, 39);
+    doc.text(customer?.name || "—", 114, 55);
+    
+    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(107, 114, 128);
+    doc.text(`Phone: ${customer?.phone_number || "—"}`, 114, 61);
+    doc.text(`Vehicle: ${vehicle?.vehicle_number ? formatVehicleNumber(vehicle.vehicle_number) : "—"} · ${vehicle?.make || ""} ${vehicle?.model || ""}`, 114, 67);
+
+    // 5. Render Line Items Table
     autoTable(doc, {
       startY: 82,
       head: [["#", "Description", "Qty", "Unit Price", "Total"]],
       body: items.map((item, i) => [
-        i + 1, item.description, item.quantity,
-        formatCurrency(item.unit_price), formatCurrency(item.total_price),
+        i + 1,
+        item.description,
+        item.quantity,
+        fmt(item.unit_price),
+        fmt(item.total_price),
       ]),
       theme: "plain",
-      headStyles: { fillColor: [79, 110, 247], textColor: 255, fontSize: 8 },
-      styles: { fontSize: 8, cellPadding: 4 },
+      headStyles: {
+        font: hasCustomFont ? "Inter" : "helvetica",
+        fontStyle: "bold",
+        fillColor: [79, 110, 247],
+        textColor: 255,
+        fontSize: 8.5
+      },
+      styles: {
+        font: hasCustomFont ? "Inter" : "helvetica",
+        fontSize: 8.5,
+        cellPadding: 5
+      },
+      columnStyles: {
+        0: { cellWidth: 10 },
+        2: { halign: "right", cellWidth: 15 },
+        3: { halign: "right", cellWidth: 35 },
+        4: { halign: "right", cellWidth: 35 }
+      },
       alternateRowStyles: { fillColor: [249, 250, 251] },
     });
 
-    const y = doc.lastAutoTable.finalY + 10;
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.text("Subtotal:", 140, y);
-    doc.text(formatCurrency(bill.subtotal), 185, y, { align: "right" });
-    if (bill.tax_amount > 0) {
-      doc.text(`GST (${bill.gst_rate ?? 18}%):`, 140, y + 6);
-      doc.text(formatCurrency(bill.tax_amount), 185, y + 6, { align: "right" });
-      doc.text("Discount:", 140, y + 12);
-      doc.text(`-${formatCurrency(bill.discount)}`, 185, y + 12, { align: "right" });
-      doc.setDrawColor(230);
-      doc.line(140, y + 16, 185, y + 16);
-      doc.setFontSize(12);
-      doc.setFont("helvetica", "bold");
-      doc.text("Total:", 140, y + 23);
-      doc.text(formatCurrency(bill.total_amount), 185, y + 23, { align: "right" });
-    } else {
-      doc.text("Discount:", 140, y + 6);
-      doc.text(`-${formatCurrency(bill.discount)}`, 185, y + 6, { align: "right" });
-      doc.setDrawColor(230);
-      doc.line(140, y + 10, 185, y + 10);
-      doc.setFontSize(12);
-      doc.setFont("helvetica", "bold");
-      doc.text("Total:", 140, y + 17);
-      doc.text(formatCurrency(bill.total_amount), 185, y + 17, { align: "right" });
+    // 6. Render Totals & Notes Block
+    const y = doc.lastAutoTable.finalY + 12;
+
+    // Render notes on the left side if present
+    if (bill.notes && bill.notes.trim()) {
+      doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
+      doc.setFontSize(8.5);
+      doc.setTextColor(75, 85, 99); // Slate 600
+      doc.text("Notes / Remarks:", 20, y);
+      
+      doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(107, 114, 128); // Slate 500
+      const splitNotes = doc.splitTextToSize(bill.notes, 100);
+      doc.text(splitNotes, 20, y + 5);
     }
-    doc.setFontSize(7);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(160);
+
+    // Render totals on the right side
+    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(75, 85, 99);
+    
+    doc.text("Subtotal:", 140, y);
+    doc.text(fmt(bill.subtotal), 185, y, { align: "right" });
+    
+    let totalOffsetY = y;
+    if (bill.tax_amount > 0) {
+      totalOffsetY += 6;
+      doc.text(`GST (${bill.gst_rate ?? 18}%):`, 140, totalOffsetY);
+      doc.text(fmt(bill.tax_amount), 185, totalOffsetY, { align: "right" });
+    }
+    
+    if (bill.discount > 0) {
+      totalOffsetY += 6;
+      doc.text("Discount:", 140, totalOffsetY);
+      doc.text(`-${fmt(bill.discount)}`, 185, totalOffsetY, { align: "right" });
+    }
+
+    totalOffsetY += 4;
+    doc.setDrawColor(229, 231, 235); // Light divider line
+    doc.setLineWidth(0.5);
+    doc.line(140, totalOffsetY, 185, totalOffsetY);
+
+    totalOffsetY += 7;
+    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(17, 24, 39);
+    doc.text("Total:", 140, totalOffsetY);
+    doc.text(fmt(bill.total_amount), 185, totalOffsetY, { align: "right" });
+
+    // 7. Footer
+    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(156, 163, 175);
     doc.text("Thank you for choosing Shree Royal Car!", 105, 280, { align: "center" });
+
     doc.save(`INV-${bill.bill_number}.pdf`);
     showToast("PDF downloaded");
   };

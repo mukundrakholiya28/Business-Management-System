@@ -158,7 +158,7 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
   }
 
   // Create new bill
-  const { id: _id, bill_number: _bn, ...billPayload } = bill;
+  const { id: _id, bill_number: _bn, gst_enabled: _ge, gst_rate: _gr, ...billPayload } = bill;
   const { data: createdBill, error: createError } = await supabase
     .from("bills")
     .insert([{ ...billPayload, payment_method: bill.payment_method || null }])
