@@ -77,8 +77,8 @@
         <tr>
           <td><%= item.description %></td>
           <td class="num"><%= item.qty %></td>
-          <td class="num">&#8377;<%= item.rate.toLocaleString('en-IN') %></td>
-          <td class="num">&#8377;<%= item.amount.toLocaleString('en-IN') %></td>
+          <td class="num">&#x20B9;<%= item.rate.toLocaleString('en-IN') %></td>
+          <td class="num">&#x20B9;<%= item.amount.toLocaleString('en-IN') %></td>
         </tr>
         <% }) %>
       </tbody>
@@ -90,23 +90,23 @@
     <div class="totals">
       <div class="row muted">
         <span>Subtotal</span>
-        <span>&#8377;<%= charges.subtotal.toLocaleString('en-IN') %></span>
+        <span>&#x20B9;<%= charges.subtotal.toLocaleString('en-IN') %></span>
       </div>
       <% if (charges.discount && charges.discount > 0) { %>
       <div class="row muted">
         <span>Discount</span>
-        <span>&minus;&#8377;<%= charges.discount.toLocaleString('en-IN') %></span>
+        <span>&minus;&#x20B9;<%= charges.discount.toLocaleString('en-IN') %></span>
       </div>
       <% } %>
       <% if (charges.taxRate && charges.taxRate > 0 && charges.taxAmount > 0) { %>
       <div class="row muted">
         <span>GST (<%= charges.taxRate %>%)</span>
-        <span>&#8377;<%= charges.taxAmount.toLocaleString('en-IN') %></span>
+        <span>&#x20B9;<%= charges.taxAmount.toLocaleString('en-IN') %></span>
       </div>
       <% } %>
       <div class="row grand">
         <span>Total Due</span>
-        <span>&#8377;<%= charges.total.toLocaleString('en-IN') %></span>
+        <span>&#x20B9;<%= charges.total.toLocaleString('en-IN') %></span>
       </div>
     </div>
   </div>
