@@ -5,9 +5,9 @@ import Navbar from "@/components/Navbar";
 import { useProtectedRoute } from "@/context/AuthContext";
 import { EmptyState, Modal, SectionHeader } from "@/components/ui";
 import { formatDate, getInitials, normalizeSearch, formatVehicleNumber } from "@/lib/helpers";
-import { loadWorkshopData, saveCustomerWithVehicles, deleteCustomer } from "@/lib/workshop-data";
+import { loadWorkshopData, saveCustomerWithVehicles, deleteCustomer, updateCustomer } from "@/lib/workshop-data";
 import Link from "next/link";
-import { Plus, Search, UserPlus, Users, ChevronRight, Trash2 } from "lucide-react";
+import { Plus, Search, UserPlus, Users, ChevronRight, Trash2, Pencil } from "lucide-react";
 
 function emptyVehicle() {
   return { vehicle_number: "", make: "", model: "", year: "", color: "" };
@@ -21,6 +21,7 @@ export default function CustomersPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null); // customer to confirm delete
+  const [editingCustomer, setEditingCustomer] = useState(null);
   const [toast, setToast] = useState(null);
 
   useEffect(() => {
@@ -93,6 +94,17 @@ export default function CustomersPage() {
     }
   };
 
+  const handleEditCustomer = async (updated) => {
+    try {
+      const saved = await updateCustomer(updated);
+      setCustomers((prev) => prev.map((c) => (c.id === saved.id ? saved : c)));
+      setEditingCustomer(null);
+      showToast("Customer updated");
+    } catch (err) {
+      showToast(err.message);
+    }
+  };
+
   if (loading || loadingData || !user) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-[#F4F5F7]">
@@ -107,7 +119,7 @@ export default function CustomersPage() {
   return (
     <div className="flex flex-col min-h-screen bg-page">
       <Navbar />
-      <main className="flex-1 pt-24 lg:pt-14">
+      <main className="flex-1">
         <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 py-7">
           <div className="flex flex-wrap items-start justify-between gap-3 mb-6 animate-fade-in">
             <div>
@@ -188,6 +200,13 @@ export default function CustomersPage() {
                       </div>
                     </Link>
                     <button
+                      onClick={() => setEditingCustomer(customer)}
+                      className="flat-btn-ghost p-1.5 text-gray-400 hover:text-amber-500 shrink-0"
+                      title="Edit customer"
+                    >
+                      <Pencil size={14} strokeWidth={1.5} />
+                    </button>
+                    <button
                       onClick={() => setConfirmDelete(customer)}
                       className="flat-btn-ghost p-1.5 text-gray-400 hover:text-red-500 shrink-0 ml-1"
                       title="Delete customer"
@@ -201,6 +220,14 @@ export default function CustomersPage() {
           )}
         </div>
       </main>
+
+      {editingCustomer && (
+        <CustomerEditModal
+          customer={editingCustomer}
+          onClose={() => setEditingCustomer(null)}
+          onSave={handleEditCustomer}
+        />
+      )}
 
       {showCreate && (
         <CustomerCreateModal
@@ -298,6 +325,35 @@ function CustomerCreateModal({ onClose, onSave }) {
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="flat-btn">Cancel</button>
           <button onClick={handleSubmit} className="flat-btn-primary">Create Customer</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function CustomerEditModal({ customer, onClose, onSave }) {
+  const [name, setName]       = useState(customer.name || "");
+  const [phone, setPhone]     = useState(customer.phone_number || "");
+  const [email, setEmail]     = useState(customer.email || "");
+  const [address, setAddress] = useState(customer.address || "");
+
+  const handleSubmit = () => {
+    if (!name.trim() || !phone.trim()) return;
+    onSave({ ...customer, name: name.trim(), phone_number: phone.trim(), email: email.trim(), address: address.trim() });
+  };
+
+  return (
+    <Modal title="Edit Customer" onClose={onClose}>
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <input value={name}    onChange={(e) => setName(e.target.value)}    className="flat-input" placeholder="Customer name" />
+          <input value={phone}   onChange={(e) => setPhone(e.target.value)}   className="flat-input" placeholder="Phone number" />
+          <input value={email}   onChange={(e) => setEmail(e.target.value)}   className="flat-input" placeholder="Email" />
+          <input value={address} onChange={(e) => setAddress(e.target.value)} className="flat-input" placeholder="Address" />
+        </div>
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose}       className="flat-btn">Cancel</button>
+          <button onClick={handleSubmit}  className="flat-btn-primary">Save Changes</button>
         </div>
       </div>
     </Modal>

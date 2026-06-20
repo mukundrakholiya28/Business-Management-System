@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import Navbar from "@/components/Navbar";
 import { useProtectedRoute } from "@/context/AuthContext";
-import { SectionHeader, StatusBadge, StatusDot, EmptyState, Modal } from "@/components/ui";
+import { SectionHeader, StatusBadge, StatusDot, EmptyState, Modal, StatusSelect } from "@/components/ui";
 import {
   formatCurrency,
   formatDate,
@@ -215,16 +215,27 @@ export default function BillingPage() {
     doc.setFontSize(9);
     doc.text("Subtotal:", 140, y);
     doc.text(formatCurrency(bill.subtotal), 185, y, { align: "right" });
-    doc.text("Tax (18% GST):", 140, y + 6);
-    doc.text(formatCurrency(bill.tax_amount), 185, y + 6, { align: "right" });
-    doc.text("Discount:", 140, y + 12);
-    doc.text(`-${formatCurrency(bill.discount)}`, 185, y + 12, { align: "right" });
-    doc.setDrawColor(230);
-    doc.line(140, y + 16, 185, y + 16);
-    doc.setFontSize(12);
-    doc.setFont("helvetica", "bold");
-    doc.text("Total:", 140, y + 23);
-    doc.text(formatCurrency(bill.total_amount), 185, y + 23, { align: "right" });
+    if (bill.tax_amount > 0) {
+      doc.text(`GST (${bill.gst_rate ?? 18}%):`, 140, y + 6);
+      doc.text(formatCurrency(bill.tax_amount), 185, y + 6, { align: "right" });
+      doc.text("Discount:", 140, y + 12);
+      doc.text(`-${formatCurrency(bill.discount)}`, 185, y + 12, { align: "right" });
+      doc.setDrawColor(230);
+      doc.line(140, y + 16, 185, y + 16);
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text("Total:", 140, y + 23);
+      doc.text(formatCurrency(bill.total_amount), 185, y + 23, { align: "right" });
+    } else {
+      doc.text("Discount:", 140, y + 6);
+      doc.text(`-${formatCurrency(bill.discount)}`, 185, y + 6, { align: "right" });
+      doc.setDrawColor(230);
+      doc.line(140, y + 10, 185, y + 10);
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text("Total:", 140, y + 17);
+      doc.text(formatCurrency(bill.total_amount), 185, y + 17, { align: "right" });
+    }
     doc.setFontSize(7);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(160);
@@ -274,10 +285,23 @@ export default function BillingPage() {
   const handleMarkPaid = async (bill) => {
     const updatedBill = { ...bill, status: "paid" };
     try {
-      const saved = await saveBillWithItems({ bill: updatedBill, items: billItems.filter((i) => i.bill_id === bill.id), isEditing: true });
+      const saved = await saveBillWithItems({ bill: updatedBill, isEditing: true });
       setBills((prev) => prev.map((b) => (b.id === bill.id ? saved.bill : b)));
       setSelectedBill(saved.bill);
       showToast("Invoice marked as paid");
+    } catch (err) {
+      showToast(err.message);
+    }
+  };
+
+  const handleStatusChange = async (bill, newStatus) => {
+    if (bill.status === newStatus) return;
+    const updatedBill = { ...bill, status: newStatus };
+    try {
+      const saved = await saveBillWithItems({ bill: updatedBill, isEditing: true });
+      setBills((prev) => prev.map((b) => (b.id === bill.id ? saved.bill : b)));
+      if (selectedBill?.id === bill.id) setSelectedBill(saved.bill);
+      showToast(`Status updated to ${newStatus}`);
     } catch (err) {
       showToast(err.message);
     }
@@ -333,7 +357,7 @@ export default function BillingPage() {
   return (
     <div className="flex flex-col min-h-screen bg-page">
       <Navbar />
-      <main className="flex-1 pt-24 lg:pt-14">
+      <main className="flex-1">
         <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 py-7">
           {/* Header */}
           <div className="flex flex-wrap items-start justify-between gap-3 mb-6 animate-fade-in">
@@ -418,63 +442,118 @@ export default function BillingPage() {
           {filteredBills.length === 0 ? (
             <EmptyState icon={FileText} title="No invoices found" description="Try adjusting your filters or create a new invoice." />
           ) : (
-            <div className="flat-card p-0 overflow-hidden animate-fade-in">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100">
-                    <th className="text-left py-3 px-5 flat-label">Invoice</th>
-                    <th className="text-left py-3 px-5 flat-label hidden sm:table-cell">Customer</th>
-                    <th className="text-left py-3 px-5 flat-label hidden md:table-cell">Vehicle</th>
-                    <th className="text-left py-3 px-5 flat-label hidden lg:table-cell">Date</th>
-                    <th className="text-center py-3 px-5 flat-label">Status</th>
-                    <th className="text-right py-3 px-5 flat-label">Amount</th>
-                    <th className="text-right py-3 px-5 flat-label">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredBills
-                    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-                    .map((bill) => {
-                      const customer = customers.find((c) => c.id === bill.customer_id);
-                      const vehicle = vehicles.find((v) => v.id === bill.vehicle_id);
-                      return (
-                        <tr key={bill.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-                          <td className="py-3 px-5 font-medium text-gray-900 whitespace-nowrap">
-                            INV-{bill.bill_number}
-                          </td>
-                          <td className="py-3 px-5 text-gray-600 hidden sm:table-cell">
-                            {customer?.name}
-                          </td>
-                          <td className="py-3 px-5 text-gray-500 hidden md:table-cell">
-                            <span className="inline-flex items-center gap-1">
-                              <Car size={12} strokeWidth={1.5} className="text-gray-400" />
-                              {formatVehicleNumber(vehicle?.vehicle_number)}
-                            </span>
-                          </td>
-                          <td className="py-3 px-5 text-gray-400 hidden lg:table-cell text-xs">
-                            {formatDate(bill.created_at)}
-                          </td>
-                          <td className="py-3 px-5 text-center">
-                            <StatusBadge status={bill.status} />
-                          </td>
-                          <td className="py-3 px-5 text-right font-semibold text-gray-900 tabular-nums">
-                            {formatCurrency(bill.total_amount)}
-                          </td>
-                          <td className="py-3 px-5 text-right whitespace-nowrap">
-                            <div className="flex items-center justify-end gap-0.5">
-                              <button onClick={() => setSelectedBill(bill)} className="flat-btn-ghost p-1.5" title="View"><Eye size={15} strokeWidth={1.5} /></button>
-                              <button onClick={() => openEditBillForm(bill)} className="flat-btn-ghost p-1.5" title="Edit"><Pencil size={15} strokeWidth={1.5} /></button>
-                              <button onClick={() => exportPDF(bill)} className="flat-btn-ghost p-1.5" title="PDF"><Download size={15} strokeWidth={1.5} /></button>
-                              <button onClick={() => sendToCustomer(bill)} className="flat-btn-ghost p-1.5 text-accent" title="Send"><Send size={15} strokeWidth={1.5} /></button>
-                              <button onClick={() => setConfirmDeleteBill(bill)} className="flat-btn-ghost p-1.5 text-gray-400 hover:text-red-500" title="Delete"><Trash2 size={15} strokeWidth={1.5} /></button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                </tbody>
-              </table>
-            </div>
+            <>
+              {/* Desktop view: Table */}
+              <div className="hidden md:block flat-card p-0 overflow-hidden animate-fade-in">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100">
+                      <th className="text-left py-3 px-5 flat-label">Invoice</th>
+                      <th className="text-left py-3 px-5 flat-label hidden sm:table-cell">Customer</th>
+                      <th className="text-left py-3 px-5 flat-label hidden md:table-cell">Vehicle</th>
+                      <th className="text-left py-3 px-5 flat-label hidden lg:table-cell">Date</th>
+                      <th className="text-center py-3 px-5 flat-label">Status</th>
+                      <th className="text-right py-3 px-5 flat-label">Amount</th>
+                      <th className="text-right py-3 px-5 flat-label">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredBills
+                      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+                      .map((bill) => {
+                        const customer = customers.find((c) => c.id === bill.customer_id);
+                        const vehicle = vehicles.find((v) => v.id === bill.vehicle_id);
+                        return (
+                          <tr key={bill.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                            <td className="py-3 px-5 font-medium text-gray-900 whitespace-nowrap">
+                              INV-{bill.bill_number}
+                            </td>
+                            <td className="py-3 px-5 text-gray-600 hidden sm:table-cell">
+                              {customer?.name}
+                            </td>
+                            <td className="py-3 px-5 text-gray-500 hidden md:table-cell">
+                              <span className="inline-flex items-center gap-1">
+                                <Car size={12} strokeWidth={1.5} className="text-gray-400" />
+                                {formatVehicleNumber(vehicle?.vehicle_number)}
+                              </span>
+                            </td>
+                            <td className="py-3 px-5 text-gray-400 hidden lg:table-cell text-xs">
+                              {formatDate(bill.created_at)}
+                            </td>
+                            <td className="py-3 px-5 text-center">
+                              <StatusSelect
+                                value={bill.status}
+                                onChange={(newStatus) => handleStatusChange(bill, newStatus)}
+                                stopPropagation
+                              />
+                            </td>
+                            <td className="py-3 px-5 text-right font-semibold text-gray-900 tabular-nums">
+                              {formatCurrency(bill.total_amount)}
+                            </td>
+                            <td className="py-3 px-5 text-right whitespace-nowrap">
+                              <div className="flex items-center justify-end gap-0.5">
+                                <button onClick={() => setSelectedBill(bill)} className="flat-btn-ghost p-1.5" title="View"><Eye size={15} strokeWidth={1.5} /></button>
+                                <button onClick={() => openEditBillForm(bill)} className="flat-btn-ghost p-1.5" title="Edit"><Pencil size={15} strokeWidth={1.5} /></button>
+                                <button onClick={() => exportPDF(bill)} className="flat-btn-ghost p-1.5" title="PDF"><Download size={15} strokeWidth={1.5} /></button>
+                                <button onClick={() => sendToCustomer(bill)} className="flat-btn-ghost p-1.5 text-accent" title="Send"><Send size={15} strokeWidth={1.5} /></button>
+                                <button onClick={() => setConfirmDeleteBill(bill)} className="flat-btn-ghost p-1.5 text-gray-400 hover:text-red-500" title="Delete"><Trash2 size={15} strokeWidth={1.5} /></button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile view: Card List */}
+              <div className="md:hidden space-y-3 animate-fade-in">
+                {filteredBills
+                  .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+                  .map((bill) => {
+                    const customer = customers.find((c) => c.id === bill.customer_id);
+                    const vehicle = vehicles.find((v) => v.id === bill.vehicle_id);
+                    return (
+                      <div key={bill.id} className="flat-card flex flex-col gap-3 p-4">
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-gray-900 text-sm">INV-{bill.bill_number}</span>
+                          <StatusSelect
+                            value={bill.status}
+                            onChange={(newStatus) => handleStatusChange(bill, newStatus)}
+                            stopPropagation
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-xs text-gray-700 font-medium">{customer?.name || "—"}</p>
+                          {vehicle && (
+                            <p className="text-[11px] text-gray-500 flex items-center gap-1">
+                              <Car size={10} strokeWidth={1.5} className="text-gray-400" />
+                              {formatVehicleNumber(vehicle.vehicle_number)} · {vehicle.make} {vehicle.model}
+                            </p>
+                          )}
+                          <p className="text-[10px] text-gray-400">{formatDate(bill.created_at)}</p>
+                        </div>
+                        <div className="flat-divider my-0.5" />
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-[9px] text-gray-400 uppercase tracking-wider">Total</p>
+                            <p className="text-sm font-bold text-gray-900 mt-0.5 tabular-nums">
+                              {formatCurrency(bill.total_amount)}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => setSelectedBill(bill)} className="flat-btn-ghost p-1.5" title="View"><Eye size={14} strokeWidth={1.5} /></button>
+                            <button onClick={() => openEditBillForm(bill)} className="flat-btn-ghost p-1.5" title="Edit"><Pencil size={14} strokeWidth={1.5} /></button>
+                            <button onClick={() => exportPDF(bill)} className="flat-btn-ghost p-1.5" title="PDF"><Download size={14} strokeWidth={1.5} /></button>
+                            <button onClick={() => sendToCustomer(bill)} className="flat-btn-ghost p-1.5 text-accent" title="Send"><Send size={14} strokeWidth={1.5} /></button>
+                            <button onClick={() => setConfirmDeleteBill(bill)} className="flat-btn-ghost p-1.5 text-gray-400 hover:text-red-500" title="Delete"><Trash2 size={14} strokeWidth={1.5} /></button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </>
           )}
         </div>
       </main>
@@ -490,6 +569,7 @@ export default function BillingPage() {
           onSend={() => sendToCustomer(selectedBill)}
           onEdit={() => openEditBillForm(selectedBill)}
           onMarkPaid={() => handleMarkPaid(selectedBill)}
+          onStatusChange={(newStatus) => handleStatusChange(selectedBill, newStatus)}
         />
       )}
 
@@ -533,7 +613,7 @@ export default function BillingPage() {
   );
 }
 
-function BillDetailModal({ bill, items, customers, vehicles, onClose, onExportPDF, onSend, onEdit, onMarkPaid }) {
+function BillDetailModal({ bill, items, customers, vehicles, onClose, onExportPDF, onSend, onEdit, onMarkPaid, onStatusChange }) {
   const customer = customers.find((c) => c.id === bill.customer_id);
   const vehicle = vehicles.find((v) => v.id === bill.vehicle_id);
   const isOnlinePending = bill.payment_method === "online" && bill.status === "pending";
@@ -574,36 +654,62 @@ function BillDetailModal({ bill, items, customers, vehicles, onClose, onExportPD
         </div>
       </div>
 
-      <table className="w-full text-sm mb-5">
-        <thead>
-          <tr className="border-b border-gray-100">
-            <th className="text-left py-2 flat-label">#</th>
-            <th className="text-left py-2 flat-label">Description</th>
-            <th className="text-right py-2 flat-label">Qty</th>
-            <th className="text-right py-2 flat-label">Price</th>
-            <th className="text-right py-2 flat-label">Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item, i) => (
-            <tr key={item.id ?? i} className="border-b border-gray-50">
-              <td className="py-2.5 text-gray-400 text-xs">{i + 1}</td>
-              <td className="py-2.5 text-gray-700">{item.description}</td>
-              <td className="py-2.5 text-right text-gray-500">{item.quantity}</td>
-              <td className="py-2.5 text-right text-gray-500">{formatCurrency(item.unit_price)}</td>
-              <td className="py-2.5 text-right font-medium text-gray-900">{formatCurrency(item.total_price)}</td>
+      {/* Line Items Table — Desktop */}
+      <div className="hidden sm:block">
+        <table className="w-full text-sm mb-5">
+          <thead>
+            <tr className="border-b border-gray-100">
+              <th className="text-left py-2 flat-label">#</th>
+              <th className="text-left py-2 flat-label">Description</th>
+              <th className="text-right py-2 flat-label">Qty</th>
+              <th className="text-right py-2 flat-label">Unit Price</th>
+              <th className="text-right py-2 flat-label">Total</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {items.map((item, i) => (
+              <tr key={item.id ?? i} className="border-b border-gray-50">
+                <td className="py-2.5 text-gray-400 text-xs">{i + 1}</td>
+                <td className="py-2.5 text-gray-700">{item.description}</td>
+                <td className="py-2.5 text-right text-gray-500">{item.quantity}</td>
+                <td className="py-2.5 text-right text-gray-500">{formatCurrency(item.unit_price)}</td>
+                <td className="py-2.5 text-right font-medium text-gray-900">{formatCurrency(item.total_price)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Line Items List — Mobile */}
+      <div className="sm:hidden space-y-2 mb-5">
+        <p className="flat-label mb-2">Items</p>
+        {items.map((item, i) => (
+          <div key={item.id ?? i} className="bg-gray-50 rounded-xl p-3 flex flex-col gap-1 text-xs">
+            <div className="flex items-start justify-between gap-2">
+              <span className="font-semibold text-gray-900 flex gap-2">
+                <span className="text-gray-400">{i + 1}.</span>
+                {item.description}
+              </span>
+              <span className="font-semibold text-gray-900 shrink-0">
+                {formatCurrency(item.total_price)}
+              </span>
+            </div>
+            <div className="text-gray-500 pl-4">
+              Qty: {item.quantity} · Price: {formatCurrency(item.unit_price)}
+            </div>
+          </div>
+        ))}
+      </div>
 
       <div className="bg-gray-50 rounded-xl p-4">
         <div className="flex justify-between text-sm text-gray-500 mb-1.5">
           <span>Subtotal</span><span>{formatCurrency(bill.subtotal)}</span>
         </div>
-        <div className="flex justify-between text-sm text-gray-500 mb-1.5">
-          <span>Tax (18% GST)</span><span>{formatCurrency(bill.tax_amount)}</span>
-        </div>
+        {bill.tax_amount > 0 && (
+          <div className="flex justify-between text-sm text-gray-500 mb-1.5">
+            <span>GST ({bill.gst_rate ?? 18}%)</span><span>{formatCurrency(bill.tax_amount)}</span>
+          </div>
+        )}
         <div className="flex justify-between text-sm text-gray-500 mb-2">
           <span>Discount</span><span>-{formatCurrency(bill.discount)}</span>
         </div>
@@ -611,11 +717,17 @@ function BillDetailModal({ bill, items, customers, vehicles, onClose, onExportPD
         <div className="flex justify-between text-base font-bold text-gray-900 mt-2">
           <span>Total</span><span>{formatCurrency(bill.total_amount)}</span>
         </div>
-        {bill.payment_method && (
-          <p className="text-xs text-gray-400 mt-2">
-            Payment: <span className="capitalize font-medium text-gray-600">{bill.payment_method}</span>
-          </p>
-        )}
+        <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-400">Status</span>
+            <StatusSelect value={bill.status} onChange={onStatusChange} />
+          </div>
+          {bill.payment_method && (
+            <p className="text-xs text-gray-400">
+              Payment: <span className="capitalize font-medium text-gray-600">{bill.payment_method}</span>
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Online pending — action strip */}
@@ -668,6 +780,8 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, onClose,
   const [notes, setNotes] = useState(bill?.notes || "");
   const [status, setStatus] = useState(bill?.status || "draft");
   const [paymentMethod, setPaymentMethod] = useState(bill?.payment_method || "cash");
+  const [gstEnabled, setGstEnabled] = useState(bill?.tax_amount > 0 ?? true);
+  const [gstRate, setGstRate] = useState(bill?.gst_rate ?? 18);
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -696,15 +810,11 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, onClose,
   };
 
   const subtotal = items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
-  const taxAmount = Math.round(subtotal * 0.18 * 100) / 100;
+  const taxAmount = gstEnabled ? Math.round(subtotal * (gstRate / 100) * 100) / 100 : 0;
   const totalAmount = subtotal + taxAmount - discount;
 
-  // Derive semi-automatic status from payment method
-  const derivedStatus = (forcedStatus) => {
-    if (forcedStatus) return forcedStatus;
-    if (paymentMethod === "cash") return "paid";
-    return "pending";
-  };
+  // Both cash and online start as pending — user marks paid manually
+  const derivedStatus = () => "pending";
 
   const buildBill = (overrideStatus) => {
     const billId = bill?.id || generateId();
@@ -716,6 +826,8 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, onClose,
       vehicle_id: vehicleId,
       subtotal,
       tax_amount: taxAmount,
+      gst_enabled: gstEnabled,
+      gst_rate: gstEnabled ? gstRate : 0,
       discount,
       total_amount: totalAmount,
       status: overrideStatus,
@@ -751,17 +863,19 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, onClose,
     const savedBill = buildBill(finalStatus);
     const savedItems = buildItems(savedBill.id);
 
-    // For online payment, send via WhatsApp Cloud API
-    if (!isEditing && paymentMethod === "online") {
+    // Send WhatsApp for all new invoices where customer has a phone
+    if (!isEditing) {
       const customer = customers.find((c) => c.id === customerId);
-      sendWhatsApp(
-        customer?.phone_number,
-        customer?.name,
-        `INV-${savedBill.bill_number}`,
-        formatWhatsAppDate(savedBill.created_at)
-      ).catch((err) => {
-        console.error("[WhatsApp send failed]", err.message);
-      });
+      if (customer?.phone_number) {
+        sendWhatsApp(
+          customer.phone_number,
+          customer.name,
+          `INV-${savedBill.bill_number}`,
+          formatWhatsAppDate(savedBill.created_at)
+        ).catch((err) => {
+          console.error("[WhatsApp send failed]", err.message);
+        });
+      }
     }
 
     onSave({ bill: savedBill, items: savedItems, isEditing });
@@ -896,41 +1010,45 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, onClose,
           <div className="space-y-2">
             {items.map((item, index) => (
               <div key={index} className="flex flex-col sm:flex-row gap-2 p-3 bg-gray-50 rounded-xl items-start sm:items-center">
-                <div className="flat-avatar w-8 h-8 bg-white text-gray-500 border border-gray-100 shrink-0">
-                  {index + 1}
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <div className="flat-avatar w-7 h-7 bg-white text-gray-500 border border-gray-100 shrink-0 text-xs">
+                    {index + 1}
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Description"
+                    value={item.description}
+                    onChange={(e) => updateItem(index, "description", e.target.value)}
+                    className="flat-input flex-1 sm:w-60 md:w-80"
+                  />
                 </div>
-                <input
-                  type="text"
-                  placeholder="Description"
-                  value={item.description}
-                  onChange={(e) => updateItem(index, "description", e.target.value)}
-                  className="flat-input flex-1 min-w-0"
-                />
-                <input
-                  type="number"
-                  placeholder="Qty"
-                  value={item.quantity}
-                  min="1"
-                  onChange={(e) => updateItem(index, "quantity", Number(e.target.value))}
-                  className="flat-input w-20"
-                />
-                <input
-                  type="number"
-                  placeholder="Price"
-                  value={item.unit_price || ""}
-                  min="0"
-                  onChange={(e) => updateItem(index, "unit_price", Number(e.target.value))}
-                  className="flat-input w-28"
-                />
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-gray-700 min-w-[72px] text-right tabular-nums">
-                    {formatCurrency(item.quantity * item.unit_price)}
-                  </span>
-                  {items.length > 1 && (
-                    <button onClick={() => removeItem(index)} className="flat-btn-ghost p-1 text-red-400">
-                      <Trash2 size={14} strokeWidth={1.5} />
-                    </button>
-                  )}
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <input
+                    type="number"
+                    placeholder="Qty"
+                    value={item.quantity}
+                    min="1"
+                    onChange={(e) => updateItem(index, "quantity", Number(e.target.value))}
+                    className="flat-input w-20 shrink-0"
+                  />
+                  <input
+                    type="number"
+                    placeholder="Unit Price"
+                    value={item.unit_price || ""}
+                    min="0"
+                    onChange={(e) => updateItem(index, "unit_price", Number(e.target.value))}
+                    className="flat-input flex-grow sm:w-28"
+                  />
+                  <div className="flex items-center gap-2 shrink-0 min-w-[80px] justify-end">
+                    <span className="text-sm font-semibold text-gray-700 tabular-nums">
+                      {formatCurrency(item.quantity * item.unit_price)}
+                    </span>
+                    {items.length > 1 && (
+                      <button onClick={() => removeItem(index)} className="flat-btn-ghost p-1 text-red-400">
+                        <Trash2 size={14} strokeWidth={1.5} />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
@@ -949,13 +1067,68 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, onClose,
           </div>
         </div>
 
+        {/* GST */}
+        <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-800">GST</p>
+              <p className="text-xs text-gray-400 mt-0.5">Apply GST to this invoice</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setGstEnabled((v) => !v)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
+                gstEnabled ? "bg-accent" : "bg-gray-200"
+              }`}
+              aria-pressed={gstEnabled}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                  gstEnabled ? "translate-x-6" : "translate-x-1"
+                }`}
+              />
+            </button>
+          </div>
+
+          {gstEnabled && (
+            <div className="flex items-center gap-3">
+              <label className="flat-label shrink-0">GST Rate (%)</label>
+              <div className="flex gap-2 flex-wrap">
+                {[5, 12, 18, 28].map((rate) => (
+                  <button
+                    key={rate}
+                    type="button"
+                    onClick={() => setGstRate(rate)}
+                    className={`px-3 py-1 rounded-lg text-xs font-medium border transition-all ${
+                      gstRate === rate
+                        ? "border-accent bg-accent/10 text-accent"
+                        : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
+                    }`}
+                  >
+                    {rate}%
+                  </button>
+                ))}
+                <input
+                  type="number"
+                  value={gstRate}
+                  min="0"
+                  max="100"
+                  onChange={(e) => setGstRate(Number(e.target.value))}
+                  className="flat-input !w-20 text-xs"
+                  placeholder="Custom"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Payment method */}
         <div>
           <label className="flat-label block mb-2">Payment Method</label>
           <div className="flex gap-2">
             {[
-              { value: "cash", label: "💵 Cash", desc: isEditing ? null : "Status → Paid" },
-              { value: "online", label: "📲 Online", desc: isEditing ? null : "Status → Pending · Send WhatsApp link" },
+              { value: "cash", label: "Cash", desc: isEditing ? null : "Status → Pending · WhatsApp sent" },
+              { value: "online", label: "nline", desc: isEditing ? null : "Status → Pending · WhatsApp sent" },
             ].map((opt) => (
               <button
                 key={opt.value}
@@ -990,12 +1163,8 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, onClose,
         {!isEditing && (
           <div className="flex items-center gap-2 text-xs text-gray-500 bg-gray-50 rounded-xl px-4 py-2.5">
             <span>Invoice will be saved as</span>
-            <span className={`flat-pill font-semibold capitalize ${
-              paymentMethod === "cash"
-                ? "bg-green-50 text-green-700"
-                : "bg-amber-50 text-amber-700"
-            }`}>
-              {paymentMethod === "cash" ? "paid" : "pending"}
+            <span className="flat-pill font-semibold capitalize bg-amber-50 text-amber-700">
+              pending
             </span>
             {paymentMethod === "online" && (
               <span className="text-gray-400">— WhatsApp link will open on create</span>
@@ -1005,7 +1174,9 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, onClose,
 
         <div className="bg-gray-50 rounded-xl p-4">
           <div className="flex justify-between text-sm text-gray-500 mb-1"><span>Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
-          <div className="flex justify-between text-sm text-gray-500 mb-1"><span>Tax (18% GST)</span><span>{formatCurrency(taxAmount)}</span></div>
+          {gstEnabled && (
+            <div className="flex justify-between text-sm text-gray-500 mb-1"><span>GST ({gstRate}%)</span><span>{formatCurrency(taxAmount)}</span></div>
+          )}
           <div className="flex justify-between text-sm text-gray-500 mb-2"><span>Discount</span><span>-{formatCurrency(discount)}</span></div>
           <div className="flat-divider" />
           <div className="flex justify-between text-base font-bold text-gray-900 mt-2"><span>Total</span><span>{formatCurrency(totalAmount)}</span></div>

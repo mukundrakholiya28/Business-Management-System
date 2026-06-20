@@ -1,7 +1,9 @@
 "use client";
 
+import React, { useState, useEffect, useRef } from "react";
 import { formatCurrency, getStatusStyle } from "@/lib/helpers";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
+import ReactDOM from "react-dom";
 
 /**
  * Flat stat card — large KPI number, uppercase label, optional trend pill
@@ -80,6 +82,81 @@ export function StatusBadge({ status }) {
 }
 
 /**
+ * Interactive status dropdown — portal-based so it escapes overflow:hidden containers.
+ * onChange(newStatus) is called when user picks a different status.
+ */
+const STATUS_STYLES = {
+  paid:      { bg: "bg-green-50",  text: "text-green-700",  border: "border-green-200" },
+  pending:   { bg: "bg-amber-50",  text: "text-amber-700",  border: "border-amber-200" },
+  draft:     { bg: "bg-gray-100",  text: "text-gray-500",   border: "border-gray-200"  },
+  cancelled: { bg: "bg-red-50",    text: "text-red-500",    border: "border-red-200"   },
+};
+const STATUS_OPTIONS = ["draft", "pending", "paid", "cancelled"];
+
+export function StatusSelect({ value, onChange }) {
+  const [open, setOpen]   = useState(false);
+  const [pos,  setPos]    = useState({ top: 0, left: 0, width: 0 });
+  const triggerRef        = useRef(null);
+
+  const handleOpen = () => {
+    if (!open && triggerRef.current) {
+      const r = triggerRef.current.getBoundingClientRect();
+      setPos({ top: r.bottom + window.scrollY + 4, left: r.left + window.scrollX, width: r.width });
+    }
+    setOpen((v) => !v);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e) => { if (triggerRef.current && !triggerRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+
+  const cur = STATUS_STYLES[value] ?? STATUS_STYLES.draft;
+
+  const panel = open && typeof document !== "undefined" && ReactDOM.createPortal(
+    <div
+      style={{ position: "absolute", top: pos.top, left: pos.left, minWidth: Math.max(pos.width, 110), zIndex: 9999 }}
+      className="bg-white border border-gray-100 rounded-xl shadow-lg py-1"
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      {STATUS_OPTIONS.map((s) => {
+        const st = STATUS_STYLES[s];
+        return (
+          <button
+            key={s}
+            type="button"
+            onClick={() => { onChange(s); setOpen(false); }}
+            className={`w-full text-left px-3 py-1.5 text-xs font-medium transition-colors ${st.text} ${s === value ? st.bg : "hover:bg-gray-50"}`}
+          >
+            {s.charAt(0).toUpperCase() + s.slice(1)}
+          </button>
+        );
+      })}
+    </div>,
+    document.body
+  );
+
+  return (
+    <div className="relative inline-block">
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={handleOpen}
+        className={`inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-2.5 py-1 border cursor-pointer select-none ${cur.bg} ${cur.text} ${cur.border}`}
+      >
+        {value.charAt(0).toUpperCase() + value.slice(1)}
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="opacity-50">
+          <path d="M2 4l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </button>
+      {panel}
+    </div>
+  );
+}
+
+/**
  * Section header — uppercase label + optional action
  */
 export function SectionHeader({ title, subtitle, action }) {
@@ -124,7 +201,7 @@ export function Modal({ children, onClose, title, wide }) {
       <div
         className={`relative bg-white rounded-card-lg shadow-dropdown animate-fade-in w-full ${
           wide ? "max-w-3xl" : "max-w-lg"
-        } max-h-[90vh] overflow-y-auto p-6`}
+        } max-h-[90vh] overflow-y-auto p-4 sm:p-6`}
         style={{ maxHeight: "calc(100vh - 48px)" }}
       >
         {title && (

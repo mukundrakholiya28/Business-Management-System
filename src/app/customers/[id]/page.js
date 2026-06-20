@@ -4,9 +4,9 @@ import { useEffect, useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import { useProtectedRoute } from "@/context/AuthContext";
-import { StatusBadge, EmptyState, Modal } from "@/components/ui";
+import { StatusSelect, EmptyState, Modal } from "@/components/ui";
 import { formatCurrency, formatDate, getInitials, generateId } from "@/lib/helpers";
-import { loadWorkshopData, saveBillWithItems, deleteVehicle, deleteBill } from "@/lib/workshop-data";
+import { loadWorkshopData, saveBillWithItems, deleteVehicle, deleteBill, updateCustomer } from "@/lib/workshop-data";
 import {
   ArrowLeft, Car, Phone, Mail, MapPin, Receipt,
   Download, Eye, Pencil, Send, ChevronDown, ChevronRight,
@@ -33,6 +33,7 @@ export default function CustomerDetailPage() {
   const [confirmDeleteVehicle, setConfirmDeleteVehicle] = useState(null);
   const [confirmDeleteBill, setConfirmDeleteBill]       = useState(null);
   const [toast, setToast]                     = useState(null);
+  const [showEditCustomer, setShowEditCustomer] = useState(false);
 
   const showToast = (msg) => {
     setToast(msg);
@@ -108,11 +109,18 @@ export default function CustomerDetailPage() {
     const y = doc.lastAutoTable.finalY + 10;
     doc.setFontSize(9);
     doc.text("Subtotal:", 140, y); doc.text(formatCurrency(bill.subtotal), 185, y, { align: "right" });
-    doc.text("Tax (18% GST):", 140, y + 6); doc.text(formatCurrency(bill.tax_amount), 185, y + 6, { align: "right" });
-    doc.text("Discount:", 140, y + 12); doc.text(`-${formatCurrency(bill.discount)}`, 185, y + 12, { align: "right" });
-    doc.setDrawColor(230); doc.line(140, y + 16, 185, y + 16);
-    doc.setFontSize(12); doc.setFont("helvetica", "bold");
-    doc.text("Total:", 140, y + 23); doc.text(formatCurrency(bill.total_amount), 185, y + 23, { align: "right" });
+    if (bill.tax_amount > 0) {
+      doc.text(`GST (${bill.gst_rate ?? 18}%):`, 140, y + 6); doc.text(formatCurrency(bill.tax_amount), 185, y + 6, { align: "right" });
+      doc.text("Discount:", 140, y + 12); doc.text(`-${formatCurrency(bill.discount)}`, 185, y + 12, { align: "right" });
+      doc.setDrawColor(230); doc.line(140, y + 16, 185, y + 16);
+      doc.setFontSize(12); doc.setFont("helvetica", "bold");
+      doc.text("Total:", 140, y + 23); doc.text(formatCurrency(bill.total_amount), 185, y + 23, { align: "right" });
+    } else {
+      doc.text("Discount:", 140, y + 6); doc.text(`-${formatCurrency(bill.discount)}`, 185, y + 6, { align: "right" });
+      doc.setDrawColor(230); doc.line(140, y + 10, 185, y + 10);
+      doc.setFontSize(12); doc.setFont("helvetica", "bold");
+      doc.text("Total:", 140, y + 17); doc.text(formatCurrency(bill.total_amount), 185, y + 17, { align: "right" });
+    }
     doc.setFontSize(7); doc.setFont("helvetica", "normal"); doc.setTextColor(160);
     doc.text("Thank you for choosing Shree Royal Car!", 105, 280, { align: "center" });
     doc.save(`INV-${bill.bill_number}.pdf`);
@@ -164,6 +172,31 @@ export default function CustomerDetailPage() {
     }
   };
 
+  const handleEditCustomer = async (updated) => {
+    try {
+      const saved = await updateCustomer(updated);
+      setCustomer(saved);
+      setShowEditCustomer(false);
+      showToast("Customer updated");
+    } catch (err) {
+      showToast(err.message);
+    }
+  };
+
+  const handleStatusChange = async (bill, newStatus) => {
+    if (bill.status === newStatus) return;
+    try {
+      const saved = await saveBillWithItems({
+        bill: { ...bill, status: newStatus },
+        isEditing: true,
+      });
+      setBills((prev) => prev.map((b) => (b.id === bill.id ? saved.bill : b)));
+      showToast(`Status updated to ${newStatus}`);
+    } catch (err) {
+      showToast(err.message);
+    }
+  };
+
   if (loading || loadingData) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-[#F4F5F7]">
@@ -196,7 +229,7 @@ export default function CustomerDetailPage() {
   return (
     <div className="flex flex-col min-h-screen bg-page">
       <Navbar />
-      <main className="flex-1 pt-24 lg:pt-14">
+      <main className="flex-1">
         <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 py-7">
 
           {/* Back button */}
@@ -251,6 +284,12 @@ export default function CustomerDetailPage() {
                   </div>
                 )}
               </div>
+              <button
+                onClick={() => setShowEditCustomer(true)}
+                className="flat-btn text-xs shrink-0 self-start"
+              >
+                <Pencil size={13} strokeWidth={1.5} /> Edit
+              </button>
             </div>
           </div>
 
@@ -324,38 +363,76 @@ export default function CustomerDetailPage() {
                             No invoices for this vehicle yet.
                           </div>
                         ) : (
-                          <table className="w-full text-sm">
-                            <thead>
-                              <tr className="bg-gray-50/70">
-                                <th className="text-left py-2.5 px-5 flat-label">Invoice</th>
-                                <th className="text-left py-2.5 px-5 flat-label hidden sm:table-cell">Date</th>
-                                <th className="text-center py-2.5 px-5 flat-label">Status</th>
-                                <th className="text-right py-2.5 px-5 flat-label">Amount</th>
-                                <th className="text-right py-2.5 px-5 flat-label">Actions</th>
-                              </tr>
-                            </thead>
-                            <tbody>
+                          <>
+                            {/* Desktop Table view */}
+                            <div className="hidden sm:block">
+                              <table className="w-full text-sm">
+                                <thead>
+                                  <tr className="bg-gray-50/70">
+                                    <th className="text-left py-2.5 px-5 flat-label">Invoice</th>
+                                    <th className="text-left py-2.5 px-5 flat-label hidden sm:table-cell">Date</th>
+                                    <th className="text-center py-2.5 px-5 flat-label">Status</th>
+                                    <th className="text-right py-2.5 px-5 flat-label">Amount</th>
+                                    <th className="text-right py-2.5 px-5 flat-label">Actions</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {vehicleBills.map((bill) => (
+                                    <tr key={bill.id} className="border-t border-gray-50 hover:bg-gray-50/50 transition-colors">
+                                      <td className="py-3 px-5 font-medium text-gray-900 whitespace-nowrap">
+                                        INV-{bill.bill_number}
+                                        {bill.notes && <span className="ml-2 text-xs text-gray-400 font-normal hidden md:inline">{bill.notes}</span>}
+                                      </td>
+                                      <td className="py-3 px-5 text-xs text-gray-400 hidden sm:table-cell">{formatDate(bill.created_at)}</td>
+                                      <td className="py-3 px-5 text-center">
+                                        <StatusSelect
+                                          value={bill.status}
+                                          onChange={(newStatus) => handleStatusChange(bill, newStatus)}
+                                        />
+                                      </td>
+                                      <td className="py-3 px-5 text-right font-semibold text-gray-900 tabular-nums">{formatCurrency(bill.total_amount)}</td>
+                                      <td className="py-3 px-5 text-right whitespace-nowrap">
+                                        <div className="flex items-center justify-end gap-0.5">
+                                          <button onClick={() => setSelectedBill(bill)} className="flat-btn-ghost p-1.5" title="View"><Eye size={15} strokeWidth={1.5} /></button>
+                                          <button onClick={() => { setEditingBill(bill); setShowBillForm(true); setSelectedBill(null); }} className="flat-btn-ghost p-1.5" title="Edit"><Pencil size={15} strokeWidth={1.5} /></button>
+                                          <button onClick={() => exportPDF(bill)} className="flat-btn-ghost p-1.5" title="PDF"><Download size={15} strokeWidth={1.5} /></button>
+                                          <button onClick={() => setConfirmDeleteBill(bill)} className="flat-btn-ghost p-1.5 text-gray-400 hover:text-red-500" title="Delete"><Trash2 size={15} strokeWidth={1.5} /></button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+
+                            {/* Mobile list view */}
+                            <div className="sm:hidden divide-y divide-gray-100">
                               {vehicleBills.map((bill) => (
-                                <tr key={bill.id} className="border-t border-gray-50 hover:bg-gray-50/50 transition-colors">
-                                  <td className="py-3 px-5 font-medium text-gray-900 whitespace-nowrap">
-                                    INV-{bill.bill_number}
-                                    {bill.notes && <span className="ml-2 text-xs text-gray-400 font-normal hidden md:inline">{bill.notes}</span>}
-                                  </td>
-                                  <td className="py-3 px-5 text-xs text-gray-400 hidden sm:table-cell">{formatDate(bill.created_at)}</td>
-                                  <td className="py-3 px-5 text-center"><StatusBadge status={bill.status} /></td>
-                                  <td className="py-3 px-5 text-right font-semibold text-gray-900 tabular-nums">{formatCurrency(bill.total_amount)}</td>
-                                  <td className="py-3 px-5 text-right whitespace-nowrap">
-                                    <div className="flex items-center justify-end gap-0.5">
-                                      <button onClick={() => setSelectedBill(bill)} className="flat-btn-ghost p-1.5" title="View"><Eye size={15} strokeWidth={1.5} /></button>
-                                      <button onClick={() => { setEditingBill(bill); setShowBillForm(true); }} className="flat-btn-ghost p-1.5" title="Edit"><Pencil size={15} strokeWidth={1.5} /></button>
-                                      <button onClick={() => exportPDF(bill)} className="flat-btn-ghost p-1.5" title="PDF"><Download size={15} strokeWidth={1.5} /></button>
-                                      <button onClick={() => setConfirmDeleteBill(bill)} className="flat-btn-ghost p-1.5 text-gray-400 hover:text-red-500" title="Delete"><Trash2 size={15} strokeWidth={1.5} /></button>
+                                <div key={bill.id} className="p-4 flex flex-col gap-2.5">
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-semibold text-gray-900 text-xs">INV-{bill.bill_number}</span>
+                                    <StatusSelect
+                                      value={bill.status}
+                                      onChange={(newStatus) => handleStatusChange(bill, newStatus)}
+                                    />
+                                  </div>
+                                  <div className="flex items-end justify-between">
+                                    <div>
+                                      <p className="text-[10px] text-gray-400">{formatDate(bill.created_at)}</p>
+                                      {bill.notes && <p className="text-[10px] text-gray-500 mt-0.5">{bill.notes}</p>}
                                     </div>
-                                  </td>
-                                </tr>
+                                    <span className="text-sm font-bold text-gray-900 tabular-nums">{formatCurrency(bill.total_amount)}</span>
+                                  </div>
+                                  <div className="flex items-center justify-end gap-1 border-t border-gray-50/50 pt-2">
+                                    <button onClick={() => setSelectedBill(bill)} className="flat-btn-ghost p-1.5" title="View"><Eye size={14} strokeWidth={1.5} /></button>
+                                    <button onClick={() => { setEditingBill(bill); setShowBillForm(true); setSelectedBill(null); }} className="flat-btn-ghost p-1.5" title="Edit"><Pencil size={14} strokeWidth={1.5} /></button>
+                                    <button onClick={() => exportPDF(bill)} className="flat-btn-ghost p-1.5" title="PDF"><Download size={14} strokeWidth={1.5} /></button>
+                                    <button onClick={() => setConfirmDeleteBill(bill)} className="flat-btn-ghost p-1.5 text-gray-400 hover:text-red-500" title="Delete"><Trash2 size={14} strokeWidth={1.5} /></button>
+                                  </div>
+                                </div>
                               ))}
-                            </tbody>
-                          </table>
+                            </div>
+                          </>
                         )}
                       </div>
                     )}
@@ -367,6 +444,14 @@ export default function CustomerDetailPage() {
         </div>
       </main>
 
+      {showEditCustomer && (
+        <CustomerEditModal
+          customer={customer}
+          onClose={() => setShowEditCustomer(false)}
+          onSave={handleEditCustomer}
+        />
+      )}
+
       {/* Bill detail modal */}
       {selectedBill && (
         <BillDetailModal
@@ -377,6 +462,7 @@ export default function CustomerDetailPage() {
           onClose={() => setSelectedBill(null)}
           onExportPDF={() => exportPDF(selectedBill)}
           onEdit={() => { setEditingBill(selectedBill); setShowBillForm(true); setSelectedBill(null); }}
+          onStatusChange={(newStatus) => handleStatusChange(selectedBill, newStatus)}
         />
       )}
 
@@ -440,7 +526,28 @@ export default function CustomerDetailPage() {
 }
 
 // ── Bill detail modal ──────────────────────────────────────────
-function BillDetailModal({ bill, items, customer, vehicle, onClose, onExportPDF, onEdit }) {
+function BillDetailModal({ bill, items, customer, vehicle, onClose, onExportPDF, onEdit, onStatusChange }) {
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState(null);
+
+  const handleResendWhatsApp = async () => {
+    setSending(true);
+    setSendError(null);
+    try {
+      const { sendWhatsApp, formatWhatsAppDate } = await import("@/lib/whatsapp");
+      await sendWhatsApp(
+        customer?.phone_number,
+        customer?.name,
+        `INV-${bill.bill_number}`,
+        formatWhatsAppDate(bill.created_at)
+      );
+    } catch (err) {
+      setSendError(err.message);
+    } finally {
+      setSending(false);
+    }
+  };
+
   return (
     <Modal title={`Invoice #INV-${bill.bill_number}`} onClose={onClose} wide>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
@@ -457,36 +564,104 @@ function BillDetailModal({ bill, items, customer, vehicle, onClose, onExportPDF,
           <p className="text-xs text-gray-400">{vehicle?.color}</p>
         </div>
       </div>
-      <table className="w-full text-sm mb-5">
-        <thead>
-          <tr className="border-b border-gray-100">
-            <th className="text-left py-2 flat-label">#</th>
-            <th className="text-left py-2 flat-label">Description</th>
-            <th className="text-right py-2 flat-label">Qty</th>
-            <th className="text-right py-2 flat-label">Price</th>
-            <th className="text-right py-2 flat-label">Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item, i) => (
-            <tr key={item.id ?? i} className="border-b border-gray-50">
-              <td className="py-2.5 text-gray-400 text-xs">{i + 1}</td>
-              <td className="py-2.5 text-gray-700">{item.description}</td>
-              <td className="py-2.5 text-right text-gray-500">{item.quantity}</td>
-              <td className="py-2.5 text-right text-gray-500">{formatCurrency(item.unit_price)}</td>
-              <td className="py-2.5 text-right font-medium text-gray-900">{formatCurrency(item.total_price)}</td>
+
+      {/* Line Items Table — Desktop */}
+      <div className="hidden sm:block">
+        <table className="w-full text-sm mb-5">
+          <thead>
+            <tr className="border-b border-gray-100">
+              <th className="text-left py-2 flat-label">#</th>
+              <th className="text-left py-2 flat-label">Description</th>
+              <th className="text-right py-2 flat-label">Qty</th>
+              <th className="text-right py-2 flat-label">Unit Price</th>
+              <th className="text-right py-2 flat-label">Total</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-      <div className="bg-gray-50 rounded-xl p-4">
-        <div className="flex justify-between text-sm text-gray-500 mb-1.5"><span>Subtotal</span><span>{formatCurrency(bill.subtotal)}</span></div>
-        <div className="flex justify-between text-sm text-gray-500 mb-1.5"><span>Tax (18% GST)</span><span>{formatCurrency(bill.tax_amount)}</span></div>
-        <div className="flex justify-between text-sm text-gray-500 mb-2"><span>Discount</span><span>-{formatCurrency(bill.discount)}</span></div>
-        <div className="flat-divider" />
-        <div className="flex justify-between text-base font-bold text-gray-900 mt-2"><span>Total</span><span>{formatCurrency(bill.total_amount)}</span></div>
+          </thead>
+          <tbody>
+            {items.map((item, i) => (
+              <tr key={item.id ?? i} className="border-b border-gray-50">
+                <td className="py-2.5 text-gray-400 text-xs">{i + 1}</td>
+                <td className="py-2.5 text-gray-700">{item.description}</td>
+                <td className="py-2.5 text-right text-gray-500">{item.quantity}</td>
+                <td className="py-2.5 text-right text-gray-500">{formatCurrency(item.unit_price)}</td>
+                <td className="py-2.5 text-right font-medium text-gray-900">{formatCurrency(item.total_price)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
-      <div className="flex flex-wrap gap-2 mt-5">
+
+      {/* Line Items List — Mobile */}
+      <div className="sm:hidden space-y-2 mb-5">
+        <p className="flat-label mb-2">Items</p>
+        {items.map((item, i) => (
+          <div key={item.id ?? i} className="bg-gray-50 rounded-xl p-3 flex flex-col gap-1 text-xs">
+            <div className="flex items-start justify-between gap-2">
+              <span className="font-semibold text-gray-900 flex gap-2">
+                <span className="text-gray-400">{i + 1}.</span>
+                {item.description}
+              </span>
+              <span className="font-semibold text-gray-900 shrink-0">
+                {formatCurrency(item.total_price)}
+              </span>
+            </div>
+            <div className="text-gray-500 pl-4">
+              Qty: {item.quantity} · Price: {formatCurrency(item.unit_price)}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="bg-gray-50 rounded-xl p-4">
+        <div className="flex justify-between text-sm text-gray-500 mb-1.5">
+          <span>Subtotal</span><span>{formatCurrency(bill.subtotal)}</span>
+        </div>
+        {bill.tax_amount > 0 && (
+          <div className="flex justify-between text-sm text-gray-500 mb-1.5">
+            <span>GST ({bill.gst_rate ?? 18}%)</span><span>{formatCurrency(bill.tax_amount)}</span>
+          </div>
+        )}
+        <div className="flex justify-between text-sm text-gray-500 mb-2">
+          <span>Discount</span><span>-{formatCurrency(bill.discount)}</span>
+        </div>
+        <div className="flat-divider" />
+        <div className="flex justify-between text-base font-bold text-gray-900 mt-2">
+          <span>Total</span><span>{formatCurrency(bill.total_amount)}</span>
+        </div>
+        <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-400">Status</span>
+            <StatusSelect value={bill.status} onChange={onStatusChange} />
+          </div>
+          {bill.payment_method && (
+            <p className="text-xs text-gray-400">
+              Payment: <span className="capitalize font-medium text-gray-600">{bill.payment_method}</span>
+            </p>
+          )}
+        </div>
+      </div>
+
+      {bill.payment_method === "online" && bill.status === "pending" && (
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 space-y-2">
+          <div className="flex items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-amber-800">Awaiting online payment</p>
+              <p className="text-[11px] text-amber-600 mt-0.5">Once confirmed, mark as paid via the status dropdown or resend the link.</p>
+            </div>
+            <button
+              onClick={handleResendWhatsApp}
+              disabled={sending}
+              className="flat-btn text-xs shrink-0 disabled:opacity-50"
+            >
+              <Send size={13} strokeWidth={1.5} />
+              {sending ? "Sending…" : "Resend Link"}
+            </button>
+          </div>
+          {sendError && <p className="text-[11px] text-red-500">{sendError}</p>}
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-2 mt-4">
         <button onClick={onExportPDF} className="flat-btn"><Download size={14} strokeWidth={1.5} /> PDF</button>
         <button onClick={onEdit} className="flat-btn"><Pencil size={14} strokeWidth={1.5} /> Edit</button>
       </div>
@@ -504,9 +679,12 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, presetCu
       ? billItems.map((i) => ({ description: i.description, quantity: i.quantity, unit_price: i.unit_price }))
       : [{ description: "", quantity: 1, unit_price: 0 }]
   );
-  const [discount, setDiscount] = useState(bill?.discount || 0);
-  const [notes, setNotes]       = useState(bill?.notes    || "");
-  const [status, setStatus]     = useState(bill?.status   || "draft");
+  const [discount, setDiscount]         = useState(bill?.discount || 0);
+  const [notes, setNotes]               = useState(bill?.notes    || "");
+  const [status, setStatus]             = useState(bill?.status   || "draft");
+  const [paymentMethod, setPaymentMethod] = useState(bill?.payment_method || "cash");
+  const [gstEnabled, setGstEnabled]     = useState(bill?.tax_amount > 0 ?? true);
+  const [gstRate, setGstRate]           = useState(bill?.gst_rate ?? 18);
 
   const visibleVehicles = vehicles.filter((v) => v.customer_id === customerId);
   const addItem    = () => setItems((p) => [...p, { description: "", quantity: 1, unit_price: 0 }]);
@@ -514,21 +692,52 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, presetCu
   const updateItem = (i, f, v) => setItems((p) => p.map((it, idx) => idx === i ? { ...it, [f]: v } : it));
 
   const subtotal    = items.reduce((s, i) => s + i.quantity * i.unit_price, 0);
-  const taxAmount   = Math.round(subtotal * 0.18 * 100) / 100;
+  const taxAmount   = gstEnabled ? Math.round(subtotal * (gstRate / 100) * 100) / 100 : 0;
   const totalAmount = subtotal + taxAmount - discount;
 
-  const handleSave = () => {
-    if (!customerId || !vehicleId || items.every((i) => !i.description.trim())) return;
-    const billId = bill?.id || generateId();
+  const derivedStatus = () => "pending";
+
+  const buildBill = (overrideStatus) => {
+    const billId     = bill?.id || generateId();
     const billNumber = bill?.bill_number || Math.max(1000, ...bills.map((b) => b.bill_number)) + 1;
-    const savedBill = {
+    return {
       id: billId, bill_number: billNumber, customer_id: customerId, vehicle_id: vehicleId,
-      subtotal, tax_amount: taxAmount, discount, total_amount: totalAmount, status, notes,
-      created_at: bill?.created_at || new Date().toISOString(),
+      subtotal, tax_amount: taxAmount, gst_enabled: gstEnabled, gst_rate: gstEnabled ? gstRate : 0,
+      discount, total_amount: totalAmount, status: overrideStatus, payment_method: paymentMethod,
+      notes, created_at: bill?.created_at || new Date().toISOString(),
     };
-    const savedItems = items
-      .filter((i) => i.description.trim())
-      .map((i) => ({ id: generateId(), bill_id: billId, description: i.description, quantity: i.quantity, unit_price: i.unit_price, total_price: i.quantity * i.unit_price }));
+  };
+
+  const buildItems = (billId) =>
+    items.filter((i) => i.description.trim()).map((i) => ({
+      id: generateId(), bill_id: billId, description: i.description,
+      quantity: i.quantity, unit_price: i.unit_price, total_price: i.quantity * i.unit_price,
+    }));
+
+  const canSave = customerId && vehicleId && items.some((i) => i.description.trim());
+
+  const handleSaveDraft = () => {
+    if (!canSave) return;
+    const savedBill = buildBill("draft");
+    onSave({ bill: savedBill, items: buildItems(savedBill.id), isEditing });
+  };
+
+  const handleSave = () => {
+    if (!canSave) return;
+    const finalStatus = isEditing ? status : derivedStatus();
+    const savedBill   = buildBill(finalStatus);
+    const savedItems  = buildItems(savedBill.id);
+
+    if (!isEditing) {
+      const cust = customers.find((c) => c.id === customerId);
+      if (cust?.phone_number) {
+        import("@/lib/whatsapp").then(({ sendWhatsApp, formatWhatsAppDate }) => {
+          sendWhatsApp(cust.phone_number, cust.name, `INV-${savedBill.bill_number}`, formatWhatsAppDate(savedBill.created_at))
+            .catch((err) => console.error("[WhatsApp send failed]", err.message));
+        });
+      }
+    }
+
     onSave({ bill: savedBill, items: savedItems, isEditing });
   };
 
@@ -557,13 +766,45 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, presetCu
           <div className="space-y-2">
             {items.map((item, i) => (
               <div key={i} className="flex flex-col sm:flex-row gap-2 p-3 bg-gray-50 rounded-xl items-start sm:items-center">
-                <div className="flat-avatar w-8 h-8 bg-white text-gray-500 border border-gray-100 shrink-0">{i + 1}</div>
-                <input type="text" placeholder="Description" value={item.description} onChange={(e) => updateItem(i, "description", e.target.value)} className="flat-input flex-1 min-w-0" />
-                <input type="number" placeholder="Qty" value={item.quantity} min="1" onChange={(e) => updateItem(i, "quantity", Number(e.target.value))} className="flat-input w-20" />
-                <input type="number" placeholder="Price" value={item.unit_price || ""} min="0" onChange={(e) => updateItem(i, "unit_price", Number(e.target.value))} className="flat-input w-28" />
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-gray-700 min-w-[72px] text-right tabular-nums">{formatCurrency(item.quantity * item.unit_price)}</span>
-                  {items.length > 1 && <button onClick={() => removeItem(i)} className="flat-btn-ghost p-1 text-red-400"><Trash2 size={14} strokeWidth={1.5} /></button>}
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <div className="flat-avatar w-7 h-7 bg-white text-gray-500 border border-gray-100 shrink-0 text-xs">
+                    {i + 1}
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Description"
+                    value={item.description}
+                    onChange={(e) => updateItem(i, "description", e.target.value)}
+                    className="flat-input flex-1 sm:w-60 md:w-80"
+                  />
+                </div>
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <input
+                    type="number"
+                    placeholder="Qty"
+                    value={item.quantity}
+                    min="1"
+                    onChange={(e) => updateItem(i, "quantity", Number(e.target.value))}
+                    className="flat-input w-20 shrink-0"
+                  />
+                  <input
+                    type="number"
+                    placeholder="Unit Price"
+                    value={item.unit_price || ""}
+                    min="0"
+                    onChange={(e) => updateItem(i, "unit_price", Number(e.target.value))}
+                    className="flat-input flex-grow sm:w-28"
+                  />
+                  <div className="flex items-center gap-2 shrink-0 min-w-[80px] justify-end">
+                    <span className="text-sm font-semibold text-gray-700 tabular-nums">
+                      {formatCurrency(item.quantity * item.unit_price)}
+                    </span>
+                    {items.length > 1 && (
+                      <button onClick={() => removeItem(i)} className="flat-btn-ghost p-1 text-red-400">
+                        <Trash2 size={14} strokeWidth={1.5} />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
@@ -571,13 +812,7 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, presetCu
           <button onClick={addItem} className="flat-btn mt-2 text-xs"><Plus size={14} strokeWidth={1.5} /> Add Item</button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div>
-            <label className="flat-label block mb-1.5">Status</label>
-            <select value={status} onChange={(e) => setStatus(e.target.value)} className="flat-select">
-              {["draft","pending","paid","cancelled"].map((v) => <option key={v} value={v}>{v}</option>)}
-            </select>
-          </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="flat-label block mb-1.5">Discount (₹)</label>
             <input type="number" value={discount || ""} onChange={(e) => setDiscount(Number(e.target.value))} className="flat-input" min="0" />
@@ -588,19 +823,120 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, presetCu
           </div>
         </div>
 
+        {/* GST */}
+        <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-800">GST</p>
+              <p className="text-xs text-gray-400 mt-0.5">Apply GST to this invoice</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setGstEnabled((v) => !v)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${gstEnabled ? "bg-accent" : "bg-gray-200"}`}
+              aria-pressed={gstEnabled}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${gstEnabled ? "translate-x-6" : "translate-x-1"}`} />
+            </button>
+          </div>
+          {gstEnabled && (
+            <div className="flex items-center gap-3">
+              <label className="flat-label shrink-0">GST Rate (%)</label>
+              <div className="flex gap-2 flex-wrap">
+                {[5, 12, 18, 28].map((rate) => (
+                  <button key={rate} type="button" onClick={() => setGstRate(rate)}
+                    className={`px-3 py-1 rounded-lg text-xs font-medium border transition-all ${gstRate === rate ? "border-accent bg-accent/10 text-accent" : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"}`}>
+                    {rate}%
+                  </button>
+                ))}
+                <input type="number" value={gstRate} min="0" max="100" onChange={(e) => setGstRate(Number(e.target.value))} className="flat-input !w-20 text-xs" placeholder="Custom" />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Payment method */}
+        <div>
+          <label className="flat-label block mb-2">Payment Method</label>
+          <div className="flex gap-2">
+            {[
+              { value: "cash",   label: "💵 Cash",   desc: isEditing ? null : "Status → Pending · WhatsApp sent" },
+              { value: "online", label: "📲 Online", desc: isEditing ? null : "Status → Pending · WhatsApp sent" },
+            ].map((opt) => (
+              <button key={opt.value} type="button" onClick={() => setPaymentMethod(opt.value)}
+                className={`flex-1 rounded-xl border px-4 py-2.5 text-left transition-all ${paymentMethod === opt.value ? "border-amber-400 bg-amber-50 text-amber-800" : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"}`}>
+                <p className="text-sm font-medium">{opt.label}</p>
+                {opt.desc && <p className="text-[11px] mt-0.5 opacity-70">{opt.desc}</p>}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Status — editing only */}
+        {isEditing && (
+          <div>
+            <label className="flat-label block mb-1.5">Status</label>
+            <select value={status} onChange={(e) => setStatus(e.target.value)} className="flat-select">
+              {["draft","pending","paid","cancelled"].map((v) => <option key={v} value={v}>{v}</option>)}
+            </select>
+          </div>
+        )}
+
+        {/* Status preview — new bills */}
+        {!isEditing && (
+          <div className="flex items-center gap-2 text-xs text-gray-500 bg-gray-50 rounded-xl px-4 py-2.5">
+            <span>Invoice will be saved as</span>
+            <span className="flat-pill font-semibold capitalize bg-amber-50 text-amber-700">pending</span>
+          </div>
+        )}
+
         <div className="bg-gray-50 rounded-xl p-4">
           <div className="flex justify-between text-sm text-gray-500 mb-1"><span>Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
-          <div className="flex justify-between text-sm text-gray-500 mb-1"><span>Tax (18% GST)</span><span>{formatCurrency(taxAmount)}</span></div>
+          {gstEnabled && <div className="flex justify-between text-sm text-gray-500 mb-1"><span>GST ({gstRate}%)</span><span>{formatCurrency(taxAmount)}</span></div>}
           <div className="flex justify-between text-sm text-gray-500 mb-2"><span>Discount</span><span>-{formatCurrency(discount)}</span></div>
           <div className="flat-divider" />
           <div className="flex justify-between text-base font-bold text-gray-900 mt-2"><span>Total</span><span>{formatCurrency(totalAmount)}</span></div>
         </div>
 
-        <div className="flex justify-end gap-2">
+        <div className="flex justify-end gap-2 flex-wrap">
           <button onClick={onClose} className="flat-btn">Cancel</button>
-          <button onClick={handleSave} disabled={!customerId || !vehicleId || items.every((i) => !i.description.trim())} className="flat-btn-primary disabled:opacity-50">
+          {!isEditing && (
+            <button onClick={handleSaveDraft} disabled={!canSave} className="flat-btn disabled:opacity-50">
+              <FileText size={14} strokeWidth={1.5} /> Save as Draft
+            </button>
+          )}
+          <button onClick={handleSave} disabled={!canSave} className="flat-btn-primary disabled:opacity-50">
             <Receipt size={14} strokeWidth={1.5} /> {isEditing ? "Save Changes" : "Create Invoice"}
           </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function CustomerEditModal({ customer, onClose, onSave }) {
+  const [name, setName]       = useState(customer.name || "");
+  const [phone, setPhone]     = useState(customer.phone_number || "");
+  const [email, setEmail]     = useState(customer.email || "");
+  const [address, setAddress] = useState(customer.address || "");
+
+  const handleSubmit = () => {
+    if (!name.trim() || !phone.trim()) return;
+    onSave({ ...customer, name: name.trim(), phone_number: phone.trim(), email: email.trim(), address: address.trim() });
+  };
+
+  return (
+    <Modal title="Edit Customer" onClose={onClose}>
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <input value={name}    onChange={(e) => setName(e.target.value)}    className="flat-input" placeholder="Customer name" />
+          <input value={phone}   onChange={(e) => setPhone(e.target.value)}   className="flat-input" placeholder="Phone number" />
+          <input value={email}   onChange={(e) => setEmail(e.target.value)}   className="flat-input" placeholder="Email" />
+          <input value={address} onChange={(e) => setAddress(e.target.value)} className="flat-input" placeholder="Address" />
+        </div>
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose}      className="flat-btn">Cancel</button>
+          <button onClick={handleSubmit} className="flat-btn-primary">Save Changes</button>
         </div>
       </div>
     </Modal>

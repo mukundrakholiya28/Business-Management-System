@@ -11,7 +11,6 @@ const navItems = [
   { href: "/",          label: "Dashboard" },
   { href: "/customers", label: "Customers" },
   { href: "/billing",   label: "Billing"   },
-  { href: "/workers",   label: "Workers"   },
 ];
 
 export default function Navbar() {
@@ -24,7 +23,7 @@ export default function Navbar() {
   }, []);
 
   return (
-    <header className="flat-navbar fixed top-0 left-0 right-0 z-40 relative">
+    <header className="flat-navbar sticky top-0 z-40 w-full">
 
       {/* ── Single row: Brand | Nav (centred) | Search + Logout ── */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center">
@@ -66,6 +65,9 @@ export default function Navbar() {
           </button>
         </div>
       </div>
+
+      {/* Target container for mobile search portal */}
+      <div id="mobile-search-container" className="lg:hidden relative" />
 
       {/* ── Mobile-only pill nav strip ────────────────────────── */}
       <div className="lg:hidden border-t border-gray-100">

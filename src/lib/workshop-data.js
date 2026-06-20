@@ -101,14 +101,20 @@ export async function saveCustomerWithVehicles({ customer, vehicles }) {
 export async function saveBillWithItems({ bill, items, isEditing }) {
   if (!isSupabaseReady()) throw new Error("Supabase is not configured.");
 
-  const itemPayload = (items || [])
-    .filter((i) => i.description?.trim())
-    .map((i) => ({
-      description: i.description,
-      quantity: i.quantity,
-      unit_price: i.unit_price,
-      total_price: i.quantity * i.unit_price,
-    }));
+  // items === undefined means "don't touch line items" (e.g. status-only update)
+  // items === [] or items === [...] means "replace line items with this set"
+  const itemsProvided = items !== undefined && items !== null;
+
+  const itemPayload = itemsProvided
+    ? (items || [])
+        .filter((i) => i.description?.trim())
+        .map((i) => ({
+          description: i.description,
+          quantity: i.quantity,
+          unit_price: i.unit_price,
+          total_price: i.quantity * i.unit_price,
+        }))
+    : null;
 
   if (isEditing) {
     const { data: updatedBills, error: updateError } = await supabase
@@ -129,22 +135,25 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
 
     if (updateError) throw new Error(updateError.message);
 
-    const { error: deleteError } = await supabase
-      .from("bill_items")
-      .delete()
-      .eq("bill_id", bill.id);
-    if (deleteError) throw new Error(deleteError.message);
-
-    if (itemPayload.length) {
-      const { error: insertItemsError } = await supabase
+    // Only replace line items if they were explicitly passed in
+    if (itemPayload !== null) {
+      const { error: deleteError } = await supabase
         .from("bill_items")
-        .insert(itemPayload.map((i) => ({ ...i, bill_id: bill.id })));
-      if (insertItemsError) throw new Error(insertItemsError.message);
+        .delete()
+        .eq("bill_id", bill.id);
+      if (deleteError) throw new Error(deleteError.message);
+
+      if (itemPayload.length) {
+        const { error: insertItemsError } = await supabase
+          .from("bill_items")
+          .insert(itemPayload.map((i) => ({ ...i, bill_id: bill.id })));
+        if (insertItemsError) throw new Error(insertItemsError.message);
+      }
     }
 
     return {
       bill: updatedBills?.[0] || bill,
-      items: itemPayload.map((i) => ({ ...i, bill_id: bill.id })),
+      items: itemPayload ? itemPayload.map((i) => ({ ...i, bill_id: bill.id })) : [],
     };
   }
 
@@ -157,17 +166,43 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
     .single();
   if (createError) throw new Error(createError.message);
 
-  if (itemPayload.length) {
+  // itemPayload is always defined for new bills (items is always passed on create)
+  const newItemPayload = itemPayload ?? [];
+  if (newItemPayload.length) {
     const { error: insertItemsError } = await supabase
       .from("bill_items")
-      .insert(itemPayload.map((i) => ({ ...i, bill_id: createdBill.id })));
+      .insert(newItemPayload.map((i) => ({ ...i, bill_id: createdBill.id })));
     if (insertItemsError) throw new Error(insertItemsError.message);
   }
 
   return {
     bill: createdBill,
-    items: itemPayload.map((i) => ({ ...i, bill_id: createdBill.id })),
+    items: newItemPayload.map((i) => ({ ...i, bill_id: createdBill.id })),
   };
+}
+
+/**
+ * Update customer profile fields (name, phone_number, email, address).
+ * Does NOT touch vehicles.
+ */
+export async function updateCustomer(customer) {
+  if (!isSupabaseReady()) throw new Error("Supabase is not configured.");
+  if (!customer?.id) throw new Error("Customer ID is required.");
+
+  const { error, data } = await supabase
+    .from("customers")
+    .update({
+      name: customer.name,
+      phone_number: customer.phone_number,
+      email: customer.email ?? null,
+      address: customer.address ?? null,
+    })
+    .eq("id", customer.id)
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data;
 }
 
 // ─── Delete operations ────────────────────────────────────────────────────────

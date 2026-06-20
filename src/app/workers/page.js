@@ -90,7 +90,7 @@ export default function WorkersPage() {
   return (
     <div className="flex flex-col min-h-screen bg-page">
       <Navbar />
-      <main className="flex-1 pt-24 lg:pt-14">
+      <main className="flex-1">
         <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 py-7">
           {/* Header */}
           <div className="flex flex-wrap items-start justify-between gap-3 mb-6 animate-fade-in">
@@ -205,13 +205,13 @@ export default function WorkersPage() {
                                 <div className="flex items-center gap-3">
                                   <span className="status-dot" style={{ background: tc.color }} />
                                   <div>
-                                    <div className="flex items-center gap-2">
-                                      <span className="flat-pill text-[10px] capitalize"
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      <span className="flat-pill text-[10px] capitalize shrink-0"
                                         style={{ background: tc.bg, color: tc.color }}>
                                         {record.salary_type}
                                       </span>
                                       {record.notes && (
-                                        <span className="text-[11px] text-gray-400">{record.notes}</span>
+                                        <span className="text-[11px] text-gray-400 break-words max-w-[150px] sm:max-w-xs">{record.notes}</span>
                                       )}
                                     </div>
                                     <p className="text-[11px] text-gray-400 mt-0.5 flex items-center gap-1">

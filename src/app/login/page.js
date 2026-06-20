@@ -8,7 +8,7 @@ import { supabase } from "@/lib/supabase";
 import { Mail, Lock, AlertCircle, UserPlus, LogIn } from "lucide-react";
 
 export default function LoginPage() {
-  const { user, loading: authLoading, login, error: authError } = useAuth();
+  const { user, loading: authLoading, login, error: authError, loginAsDemo } = useAuth();
   const router = useRouter();
   const [tab, setTab]             = useState("signin"); // "signin" | "signup"
   const [email, setEmail]         = useState("");
@@ -173,6 +173,17 @@ export default function LoginPage() {
             </p>
           </form>
         )}
+
+        {/* Divider and Demo Bypass */}
+        <div className="mt-6 pt-4 border-t border-gray-100 dark:border-gray-800 text-center">
+          <button
+            type="button"
+            onClick={loginAsDemo}
+            className="w-full justify-center flat-btn text-xs hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition-colors"
+          >
+            Demo Mode (Bypass Login)
+          </button>
+        </div>
       </div>
     </div>
   );
