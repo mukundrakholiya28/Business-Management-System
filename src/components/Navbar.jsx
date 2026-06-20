@@ -1,0 +1,96 @@
+"use client";
+
+import { useEffect } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { LogOut } from "lucide-react";
+import GlobalSearch from "./GlobalSearch";
+import { useAuth } from "@/context/AuthContext";
+
+const navItems = [
+  { href: "/",          label: "Dashboard" },
+  { href: "/customers", label: "Customers" },
+  { href: "/billing",   label: "Billing"   },
+  { href: "/workers",   label: "Workers"   },
+];
+
+export default function Navbar() {
+  const pathname = usePathname();
+  const { logout } = useAuth();
+
+  useEffect(() => {
+    document.documentElement.classList.remove("dark");
+    localStorage.removeItem("theme");
+  }, []);
+
+  return (
+    <header className="flat-navbar fixed top-0 left-0 right-0 z-40 relative">
+
+      {/* ── Single row: Brand | Nav (centred) | Search + Logout ── */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center">
+
+        {/* Brand — left */}
+        <Link href="/" className="shrink-0 hover:opacity-80 transition-opacity">
+          <span className="font-vortice text-gray-900 text-[16px] tracking-wide whitespace-nowrap">
+            Shree Royal Car
+          </span>
+        </Link>
+
+        {/* Desktop nav — absolutely centred */}
+        <nav className="hidden lg:flex items-center gap-0.5 absolute left-1/2 -translate-x-1/2">
+          {navItems.map(({ href, label }) => {
+            const isActive = pathname === href;
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={`px-3.5 py-1.5 rounded-lg text-[13px] font-medium transition-all duration-150 whitespace-nowrap
+                  ${isActive ? "bg-gray-200 text-gray-900" : "text-gray-500 hover:text-gray-900 hover:bg-gray-100"}`}
+              >
+                {label}
+              </Link>
+            );
+          })}
+        </nav>
+
+        {/* Search + Logout — pushed to right */}
+        <div className="flex items-center gap-2 ml-auto shrink-0">
+          <GlobalSearch />
+          <button
+            onClick={logout}
+            className="flex items-center gap-1.5 flat-btn-ghost px-2 sm:px-3 py-1.5 text-gray-500 hover:text-red-500 text-[13px] font-medium"
+            aria-label="Log Out"
+          >
+            <LogOut size={16} strokeWidth={1.5} />
+            <span className="hidden sm:inline">Logout</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ── Mobile-only pill nav strip ────────────────────────── */}
+      <div className="lg:hidden border-t border-gray-100">
+        <div className="px-4 sm:px-6">
+          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-2">
+            {navItems.map(({ href, label }) => {
+              const isActive = pathname === href;
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`shrink-0 px-4 py-1.5 rounded-full text-[13px] font-medium transition-all duration-150 whitespace-nowrap
+                    ${isActive
+                      ? "bg-gray-900 text-white"
+                      : "text-gray-500 hover:text-gray-900 hover:bg-gray-100"
+                    }`}
+                >
+                  {label}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+    </header>
+  );
+}

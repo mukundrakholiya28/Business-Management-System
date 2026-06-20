@@ -1,0 +1,27 @@
+import { Inter } from "next/font/google";
+import "./globals.css";
+import { AuthProvider, ProtectedLayout } from "@/context/AuthContext";
+
+const inter = Inter({
+  variable: "--font-inter",
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700", "800"],
+});
+
+export const metadata = {
+  title: "Shree Royal Car — Workshop Manager",
+  description:
+    "Business Management System for Shree Royal Car workshop. Manage customers, vehicles, billing, and worker payroll.",
+};
+
+export default function RootLayout({ children }) {
+  return (
+    <html lang="en" className={`${inter.variable} h-full antialiased`} suppressHydrationWarning>
+      <body className="min-h-full">
+        <AuthProvider>
+          {children}
+        </AuthProvider>
+      </body>
+    </html>
+  );
+}
