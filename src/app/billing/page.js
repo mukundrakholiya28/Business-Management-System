@@ -1128,7 +1128,7 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, onClose,
           <div className="flex gap-2">
             {[
               { value: "cash", label: "Cash", desc: isEditing ? null : "Status → Pending · WhatsApp sent" },
-              { value: "online", label: "nline", desc: isEditing ? null : "Status → Pending · WhatsApp sent" },
+              { value: "online", label: "Online", desc: isEditing ? null : "Status → Pending · WhatsApp sent" },
             ].map((opt) => (
               <button
                 key={opt.value}
