@@ -15,6 +15,11 @@ import ejs from "ejs";
 import path from "path";
 import fs from "fs";
 
+// Force Node.js runtime — required for fs, path, puppeteer, ejs
+export const runtime = "nodejs";
+// Give Puppeteer enough time on Vercel (max 60s on Pro, 10s on Hobby)
+export const maxDuration = 60;
+
 // ── Chromium / Puppeteer bootstrap ───────────────────────────────────────────
 
 async function getBrowser() {
@@ -157,18 +162,24 @@ export async function POST(request) {
     // ── Render HTML ───────────────────────────────────────────────────────────
     let html = await ejs.renderFile(TEMPLATE_PATH, templateData, { async: false });
 
-    // Replace the external CSS link with inlined CSS + Google Fonts removed
-    // (Puppeteer may not have internet in all environments)
-    html = html
-      .replace(/<link[^>]+fonts\.googleapis[^>]+>/g, "")
-      .replace(/<link[^>]+invoice\.css[^>]+>/, cssAsInlineTag());
+    // Inline the CSS so it works without a running web server.
+    // Keep the Google Fonts link — Puppeteer will fetch it (networkidle0 below).
+    // Add a safe fallback in case fonts don't load.
+    html = html.replace(
+      /<link[^>]+invoice\.css[^>]+>/,
+      cssAsInlineTag() +
+      `<style>
+        /* Fallback if Google Fonts are unreachable */
+        body { font-family: 'Poppins', 'Segoe UI', Arial, sans-serif; }
+        .brand-text .name, .invoice-tag .label { font-family: 'Oswald', 'Arial Black', sans-serif; }
+      </style>`
+    );
 
     // ── Render PDF ────────────────────────────────────────────────────────────
     const browser = await getBrowser();
     const page = await browser.newPage();
 
-    await page.setContent(html, { waitUntil: "domcontentloaded" });
-    // Wait for any embedded fonts / images
+    await page.setContent(html, { waitUntil: "networkidle0", timeout: 15000 });
     await page.evaluateHandle("document.fonts.ready");
 
     const pdf = await page.pdf({

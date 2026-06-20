@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Invoice <%= invoice.number %> — <%= company.name %></title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<!-- Flat minimalist body font -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Oswald:wght@600;700&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="/css/invoice.css" />
+</head>
+<body>
+
+<div class="sheet">
+
+  <!-- ===== Header ===== -->
+  <div class="header">
+    <div class="brand">
+      <img src="<%= company.logo %>" alt="<%= company.name %> logo" />
+      <div class="brand-text">
+        <p class="name"><%= company.name %></p>
+        <div class="tagline"><%= company.tagline %></div>
+        <div class="est">EST. <%= company.established %></div>
+      </div>
+    </div>
+    <div class="invoice-tag">
+      <div class="label">Invoice</div>
+      <div class="number">#<%= invoice.number %></div>
+    </div>
+  </div>
+
+  <!-- ===== Meta strip: company / bill-to / invoice dates ===== -->
+  <div class="meta-strip">
+    <div class="meta-block">
+      <div class="eyebrow">From</div>
+      <div class="value">
+        <strong><%= company.name %></strong>
+        <%= company.address %><br/>
+        <%= company.phone %> &middot; <%= company.email %><br/>
+        GSTIN: <%= company.gstin %>
+      </div>
+    </div>
+    <div class="meta-block">
+      <div class="eyebrow">Bill To</div>
+      <div class="value">
+        <strong><%= billTo.name %></strong>
+        <%= billTo.address %><br/>
+        <%= billTo.phone %><br/>
+        Vehicle: <%= billTo.vehicle %>
+      </div>
+    </div>
+    <div class="meta-block">
+      <div class="eyebrow">Invoice Details</div>
+      <div class="value">
+        Date: <%= invoice.date %><br/>
+        Due: <%= invoice.dueDate %>
+      </div>
+      <span class="status-pill"><%= invoice.status %></span>
+    </div>
+  </div>
+
+  <!-- ===== Line items ===== -->
+  <div class="items">
+    <table class="items-table">
+      <thead>
+        <tr>
+          <th style="width: 50%">Description</th>
+          <th class="num" style="width: 12%">Qty</th>
+          <th class="num" style="width: 19%">Rate</th>
+          <th class="num" style="width: 19%">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% items.forEach(function(item) { %>
+        <tr>
+          <td><%= item.description %></td>
+          <td class="num"><%= item.qty %></td>
+          <td class="num">&#8377;<%= item.rate.toLocaleString('en-IN') %></td>
+          <td class="num">&#8377;<%= item.amount.toLocaleString('en-IN') %></td>
+        </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ===== Totals ===== -->
+  <div class="totals-wrap">
+    <div class="totals">
+      <div class="row muted">
+        <span>Subtotal</span>
+        <span>&#8377;<%= charges.subtotal.toLocaleString('en-IN') %></span>
+      </div>
+      <% if (charges.discount && charges.discount > 0) { %>
+      <div class="row muted">
+        <span>Discount</span>
+        <span>&minus;&#8377;<%= charges.discount.toLocaleString('en-IN') %></span>
+      </div>
+      <% } %>
+      <% if (charges.taxRate && charges.taxRate > 0 && charges.taxAmount > 0) { %>
+      <div class="row muted">
+        <span>GST (<%= charges.taxRate %>%)</span>
+        <span>&#8377;<%= charges.taxAmount.toLocaleString('en-IN') %></span>
+      </div>
+      <% } %>
+      <div class="row grand">
+        <span>Total Due</span>
+        <span>&#8377;<%= charges.total.toLocaleString('en-IN') %></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Payment details ===== -->
+  <div class="payment">
+    <div>
+      <div class="eyebrow">Payment Methods</div>
+      <div class="line"><span>Accepted via</span> <%= payment.method %></div>
+      <div class="line"><span>UPI ID</span> <%= payment.upiId %></div>
+    </div>
+    <div>
+      <div class="eyebrow">Bank Transfer</div>
+      <div class="line"><span>Bank</span> <%= payment.bankName %></div>
+      <div class="line"><span>Account No.</span> <%= payment.accountNumber %></div>
+      <div class="line"><span>IFSC</span> <%= payment.ifsc %></div>
+    </div>
+  </div>
+
+  <div class="notes">
+    <%= payment.notes %>
+  </div>
+
+  <!-- ===== Footer ===== -->
+  <div class="footer-strip">
+    <span>Thank you for trusting <strong><%= company.name %></strong></span>
+    <span><%= company.phone %></span>
+  </div>
+
+</div>
+
+</body>
+</html>
