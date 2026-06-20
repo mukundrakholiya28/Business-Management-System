@@ -248,20 +248,24 @@ export default function BillingPage() {
     const customer = customers.find((c) => c.id === bill.customer_id);
     const vehicle  = vehicles.find((v) => v.id === bill.vehicle_id);
     const items    = billItems.filter((i) => i.bill_id === bill.id);
-    const results  = [];
+    
+    let emailStatus = { success: false, error: null, attempted: false };
+    let whatsappStatus = { success: false, error: null, attempted: false };
 
     // Send email if customer has an email address
     if (customer?.email) {
+      emailStatus.attempted = true;
       try {
         await sendInvoiceEmail({ bill, items, customer, vehicle });
-        results.push("email");
+        emailStatus.success = true;
       } catch (err) {
-        showToast(`Email failed: ${err.message}`);
+        emailStatus.error = err.message || "Unknown error";
       }
     }
 
     // Send WhatsApp
     if (customer?.phone_number) {
+      whatsappStatus.attempted = true;
       try {
         await sendWhatsApp(
           customer.phone_number,
@@ -269,16 +273,40 @@ export default function BillingPage() {
           `INV-${bill.bill_number}`,
           formatWhatsAppDate(bill.created_at)
         );
-        results.push("WhatsApp");
+        whatsappStatus.success = true;
       } catch (err) {
-        showToast(`WhatsApp failed: ${err.message}`);
+        whatsappStatus.error = err.message || "Unknown error";
       }
     }
 
-    if (results.length) {
-      showToast(`Invoice sent via ${results.join(" & ")} to ${customer?.name}`);
-    } else if (!customer?.email && !customer?.phone_number) {
+    // Consolidated status messaging and fallbacks
+    if (!emailStatus.attempted && !whatsappStatus.attempted) {
       showToast("No email or phone on file for this customer.");
+      return;
+    }
+
+    if (emailStatus.attempted && whatsappStatus.attempted) {
+      if (emailStatus.success && whatsappStatus.success) {
+        showToast(`Invoice sent via Email & WhatsApp to ${customer.name}`);
+      } else if (emailStatus.success && !whatsappStatus.success) {
+        showToast(`Sent via Email, but WhatsApp failed (Fallback: Email OK)`);
+      } else if (!emailStatus.success && whatsappStatus.success) {
+        showToast(`Sent via WhatsApp, but Email failed (Fallback: WhatsApp OK)`);
+      } else {
+        showToast(`Delivery failed! Email & WhatsApp both failed.`);
+      }
+    } else if (emailStatus.attempted) {
+      if (emailStatus.success) {
+        showToast(`Invoice sent via Email to ${customer.name}`);
+      } else {
+        showToast(`Email failed: ${emailStatus.error}. No phone for WhatsApp fallback.`);
+      }
+    } else if (whatsappStatus.attempted) {
+      if (whatsappStatus.success) {
+        showToast(`Invoice sent via WhatsApp to ${customer.name}`);
+      } else {
+        showToast(`WhatsApp failed: ${whatsappStatus.error}. No email for Email fallback.`);
+      }
     }
   };
 
@@ -336,7 +364,77 @@ export default function BillingPage() {
       setSelectedBill(nextBill);
       setShowBillForm(false);
       setEditingBill(null);
-      showToast(isEditing ? "Invoice updated" : "Invoice created");
+
+      if (isEditing) {
+        showToast("Invoice updated");
+        return;
+      }
+
+      if (nextBill.status === "draft") {
+        showToast("Invoice created as draft");
+        return;
+      }
+
+      // Automatically send notifications for new invoices
+      const customer = customers.find((c) => c.id === nextBill.customer_id);
+      const vehicle = vehicles.find((v) => v.id === nextBill.vehicle_id);
+
+      let emailStatus = { success: false, error: null, attempted: false };
+      let whatsappStatus = { success: false, error: null, attempted: false };
+
+      // Try WhatsApp first
+      if (customer?.phone_number) {
+        whatsappStatus.attempted = true;
+        try {
+          await sendWhatsApp(
+            customer.phone_number,
+            customer.name,
+            `INV-${nextBill.bill_number}`,
+            formatWhatsAppDate(nextBill.created_at)
+          );
+          whatsappStatus.success = true;
+        } catch (whatsappErr) {
+          whatsappStatus.error = whatsappErr.message || "Unknown error";
+        }
+      }
+
+      // Try Email
+      if (customer?.email) {
+        emailStatus.attempted = true;
+        try {
+          await sendInvoiceEmail({ bill: nextBill, items: nextItems, customer, vehicle });
+          emailStatus.success = true;
+        } catch (emailErr) {
+          emailStatus.error = emailErr.message || "Unknown error";
+        }
+      }
+
+      // Formulate consolidated response toast
+      if (!emailStatus.attempted && !whatsappStatus.attempted) {
+        showToast("Invoice created. No contact info on file to send.");
+      } else if (emailStatus.attempted && whatsappStatus.attempted) {
+        if (emailStatus.success && whatsappStatus.success) {
+          showToast("Invoice created & sent via Email & WhatsApp!");
+        } else if (emailStatus.success && !whatsappStatus.success) {
+          showToast("Invoice created. Sent via Email, but WhatsApp failed.");
+        } else if (!emailStatus.success && whatsappStatus.success) {
+          showToast("Invoice created. Sent via WhatsApp, but Email failed.");
+        } else {
+          showToast("Invoice created, but Email & WhatsApp delivery failed.");
+        }
+      } else if (emailStatus.attempted) {
+        if (emailStatus.success) {
+          showToast("Invoice created & sent via Email!");
+        } else {
+          showToast(`Invoice created, but Email failed: ${emailStatus.error}`);
+        }
+      } else if (whatsappStatus.attempted) {
+        if (whatsappStatus.success) {
+          showToast("Invoice created & sent via WhatsApp!");
+        } else {
+          showToast(`Invoice created, but WhatsApp failed: ${whatsappStatus.error}`);
+        }
+      }
     } catch (error) {
       showToast(error.message);
     }
@@ -862,21 +960,6 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, onClose,
     const finalStatus = isEditing ? status : derivedStatus();
     const savedBill = buildBill(finalStatus);
     const savedItems = buildItems(savedBill.id);
-
-    // Send WhatsApp for all new invoices where customer has a phone
-    if (!isEditing) {
-      const customer = customers.find((c) => c.id === customerId);
-      if (customer?.phone_number) {
-        sendWhatsApp(
-          customer.phone_number,
-          customer.name,
-          `INV-${savedBill.bill_number}`,
-          formatWhatsAppDate(savedBill.created_at)
-        ).catch((err) => {
-          console.error("[WhatsApp send failed]", err.message);
-        });
-      }
-    }
 
     onSave({ bill: savedBill, items: savedItems, isEditing });
   };
