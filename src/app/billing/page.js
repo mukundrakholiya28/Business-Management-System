@@ -1210,8 +1210,8 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, onClose,
           <label className="flat-label block mb-2">Payment Method</label>
           <div className="flex gap-2">
             {[
-              { value: "cash", label: "Cash", desc: isEditing ? null : "Status → Pending · WhatsApp sent" },
-              { value: "online", label: "Online", desc: isEditing ? null : "Status → Pending · WhatsApp sent" },
+              { value: "cash", label: "Cash", desc: isEditing ? null : "Status → Pending" },
+              { value: "online", label: "Online", desc: isEditing ? null : "Status → Pending" },
             ].map((opt) => (
               <button
                 key={opt.value}
