@@ -1,6 +1,6 @@
 /**
  * Send a WhatsApp template message via the internal API route.
- * Uses template: jaspers_market_order_confirmation_v1
+ * Uses template: shree_royal_invoice
  * Parameters: customerName, invoiceNumber, date
  *
  * @param {string} to            - Recipient phone (any format, digits extracted server-side)

@@ -215,78 +215,133 @@ export default function BillingPage() {
     };
     const logoImg = await loadLogo();
 
-    // 3. Render Header
+    // Page Background - Warm Off-White
+    doc.setFillColor(250, 248, 242);
+    doc.rect(0, 0, 210, 297, "F");
+
+    // Page Border - Deep Navy
+    doc.setDrawColor(43, 42, 61);
+    doc.setLineWidth(1);
+    doc.rect(15, 15, 180, 267, "D");
+
+    // 3. Render Header - Black Block
+    doc.setFillColor(0, 0, 0);
+    doc.rect(15, 15, 180, 28, "F");
+
     if (logoImg) {
-      doc.addImage(logoImg, "PNG", 20, 14, 16, 16);
+      doc.addImage(logoImg, "PNG", 22, 19, 20, 20);
       doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
-      doc.setFontSize(18);
-      doc.setTextColor(17, 24, 39); // Slate 900
-      doc.text("SHREE ROYAL CAR", 40, 21);
+      doc.setFontSize(22);
+      doc.setTextColor(255, 255, 255); // White
+      doc.text("SHREE ROYAL CAR", 48, 26);
       
       doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
       doc.setFontSize(8.5);
-      doc.setTextColor(107, 114, 128); // Slate 500
-      doc.text("Car Workshop & Service Center", 40, 26);
+      doc.setTextColor(220, 220, 220); // Light Grey
+      doc.text("AUTOMOTIVE REPAIR & CAR WASH", 48, 32);
+      
+      doc.setFontSize(7.5);
+      doc.setTextColor(180, 180, 180);
+      doc.text("EST. 2004", 48, 37);
     } else {
       doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
-      doc.setFontSize(20);
-      doc.setTextColor(17, 24, 39);
-      doc.text("SHREE ROYAL CAR", 20, 21);
+      doc.setFontSize(24);
+      doc.setTextColor(255, 255, 255);
+      doc.text("SHREE ROYAL CAR", 24, 28);
       
       doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
       doc.setFontSize(9);
-      doc.setTextColor(107, 114, 128);
-      doc.text("Car Workshop & Service Center", 20, 26);
+      doc.setTextColor(220, 220, 220);
+      doc.text("AUTOMOTIVE REPAIR & CAR WASH  |  EST. 2004", 24, 35);
     }
 
-    // Divider accent line
-    doc.setDrawColor(79, 110, 247);
+    // Invoice tag inside black header block
+    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
+    doc.setFontSize(16);
+    doc.setTextColor(255, 255, 255);
+    doc.text("INVOICE", 188, 27, { align: "right" });
+    
+    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(220, 220, 220);
+    doc.text(`#INV-${bill.bill_number}`, 188, 33, { align: "right" });
+
+    // 4. Render Meta Strip (Company info / Bill-to / Invoice Details)
+    doc.setDrawColor(43, 42, 61);
     doc.setLineWidth(0.5);
-    doc.line(20, 35, 190, 35);
+    doc.line(15, 43, 195, 43);
+    doc.line(15, 78, 195, 78);
+    
+    // Vertical hairline dividers
+    doc.setDrawColor(216, 210, 190); // Line color
+    doc.line(88, 43, 88, 78);
+    doc.line(142, 43, 142, 78);
 
-    // 4. Render Invoice Meta & Bill To Info Cards
-    // Left card box (Invoice Meta)
-    doc.setFillColor(249, 250, 251);
-    doc.roundedRect(20, 42, 80, 32, 2, 2, "F");
-    
+    // Column 1: From (Company info)
     doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
-    doc.setFontSize(10);
-    doc.setTextColor(17, 24, 39);
-    doc.text(`INVOICE #INV-${bill.bill_number}`, 24, 49);
-    
-    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
-    doc.setFontSize(8.5);
-    doc.setTextColor(107, 114, 128);
-    doc.text(`Date: ${formatDate(bill.created_at)}`, 24, 55);
-    doc.text(`Status: ${bill.status.toUpperCase()}`, 24, 61);
-    doc.text(`Payment: ${bill.payment_method.toUpperCase()}`, 24, 67);
+    doc.setFontSize(7.5);
+    doc.setTextColor(90, 90, 112); // Soft navy
+    doc.text("FROM", 20, 49);
 
-    // Right card box (Customer / Vehicle)
-    doc.setFillColor(249, 250, 251);
-    doc.roundedRect(110, 42, 80, 32, 2, 2, "F");
-    
     doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
-    doc.setFontSize(8.5);
-    doc.setTextColor(156, 163, 175); // Gray 400
-    doc.text("BILL TO", 114, 49);
-    
-    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
-    doc.setFontSize(10);
-    doc.setTextColor(17, 24, 39);
-    doc.text(customer?.name || "—", 114, 55);
-    
+    doc.setFontSize(9);
+    doc.setTextColor(43, 42, 61); // Navy
+    doc.text("Shree Royal Car", 20, 54);
+
     doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
-    doc.setFontSize(8.5);
-    doc.setTextColor(107, 114, 128);
-    doc.text(`Phone: ${customer?.phone_number || "—"}`, 114, 61);
-    doc.text(`Vehicle: ${vehicle?.vehicle_number ? formatVehicleNumber(vehicle.vehicle_number) : "—"} · ${vehicle?.make || ""} ${vehicle?.model || ""}`, 114, 67);
+    doc.setFontSize(8);
+    doc.text("12 Ashram Road, Navrangpura,", 20, 58);
+    doc.text("Ahmedabad, Gujarat 380009", 20, 62);
+    doc.text("+91 98765 43210 · billing@shreeroyalcar.in", 20, 66);
+    doc.text("GSTIN: 24ABCDE1234F1Z5", 20, 70);
+
+    // Column 2: Bill To
+    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
+    doc.setFontSize(7.5);
+    doc.setTextColor(90, 90, 112);
+    doc.text("BILL TO", 93, 49);
+
+    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(43, 42, 61);
+    doc.text(customer?.name || "—", 93, 54);
+
+    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
+    doc.setFontSize(8);
+    doc.text(customer?.address || "No address on record", 93, 58);
+    doc.text(`Phone: ${customer?.phone_number || "—"}`, 93, 62);
+    doc.text(`Vehicle: ${vehicle?.vehicle_number ? formatVehicleNumber(vehicle.vehicle_number) : "—"}`, 93, 66);
+    doc.text(`${vehicle?.make || ""} ${vehicle?.model || ""}`, 93, 70);
+
+    // Column 3: Invoice Details & Status
+    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
+    doc.setFontSize(7.5);
+    doc.setTextColor(90, 90, 112);
+    doc.text("DETAILS", 147, 49);
+
+    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(43, 42, 61);
+    doc.text(`Date: ${formatDate(bill.created_at)}`, 147, 54);
+    const dueDateObj = new Date(new Date(bill.created_at).getTime() + 7 * 24 * 60 * 60 * 1000);
+    doc.text(`Due: ${formatDate(dueDateObj.toISOString())}`, 147, 59);
+
+    // Status pill
+    doc.setFillColor(252, 233, 168); // Soft yellow
+    doc.setDrawColor(43, 42, 61);
+    doc.setLineWidth(0.7);
+    doc.rect(147, 63, 24, 6, "FD");
+    
+    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
+    doc.setFontSize(7.5);
+    doc.setTextColor(43, 42, 61);
+    doc.text(bill.status.toUpperCase(), 159, 67.2, { align: "center" });
 
     // 5. Render Line Items Table
     autoTable(doc, {
-      startY: 82,
-      head: [["#", "Description", "Qty", "Unit Price", "Total"]],
-      body: items.map((item, i) => [
-        i + 1,
+      startY: 85,
+      head: [["Description", "Qty", "Rate", "Amount"]],
+      body: items.map((item) => [
         item.description,
         item.quantity,
         fmt(item.unit_price),
@@ -296,79 +351,149 @@ export default function BillingPage() {
       headStyles: {
         font: hasCustomFont ? "Inter" : "helvetica",
         fontStyle: "bold",
-        fillColor: [79, 110, 247],
+        fillColor: [43, 42, 61], // Deep navy background
         textColor: 255,
-        fontSize: 8.5
+        fontSize: 8.5,
+        cellPadding: 4
       },
       styles: {
         font: hasCustomFont ? "Inter" : "helvetica",
         fontSize: 8.5,
-        cellPadding: 5
+        cellPadding: 5,
+        textColor: [43, 42, 61],
+        lineColor: [216, 210, 190], // Hairline border
+        lineWidth: 0.2
       },
       columnStyles: {
-        0: { cellWidth: 10 },
-        2: { halign: "right", cellWidth: 15 },
-        3: { halign: "right", cellWidth: 35 },
-        4: { halign: "right", cellWidth: 35 }
+        1: { halign: "right", cellWidth: 15 },
+        2: { halign: "right", cellWidth: 35 },
+        3: { halign: "right", cellWidth: 35 }
       },
-      alternateRowStyles: { fillColor: [249, 250, 251] },
+      alternateRowStyles: { fillColor: [251, 249, 241] }, // Warm alternating row color
     });
 
-    // 6. Render Totals & Notes Block
-    const y = doc.lastAutoTable.finalY + 12;
+    // 6. Render Totals Block
+    const y = doc.lastAutoTable.finalY + 8;
+    const totalsWidth = 75;
+    const totalsStartX = 120;
 
-    // Render notes on the left side if present
-    if (bill.notes && bill.notes.trim()) {
-      doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
-      doc.setFontSize(8.5);
-      doc.setTextColor(75, 85, 99); // Slate 600
-      doc.text("Notes / Remarks:", 20, y);
-      
-      doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
-      doc.setFontSize(8);
-      doc.setTextColor(107, 114, 128); // Slate 500
-      const splitNotes = doc.splitTextToSize(bill.notes, 100);
-      doc.text(splitNotes, 20, y + 5);
-    }
-
-    // Render totals on the right side
     doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
-    doc.setFontSize(9);
-    doc.setTextColor(75, 85, 99);
+    doc.setFontSize(8.5);
+    doc.setTextColor(90, 90, 112); // Soft navy
     
-    doc.text("Subtotal:", 140, y);
-    doc.text(fmt(bill.subtotal), 185, y, { align: "right" });
+    doc.text("Subtotal", totalsStartX, y);
+    doc.text(fmt(bill.subtotal), 190, y, { align: "right" });
     
     let totalOffsetY = y;
     if (bill.tax_amount > 0) {
       totalOffsetY += 6;
-      doc.text(`GST (${bill.gst_rate ?? 18}%):`, 140, totalOffsetY);
-      doc.text(fmt(bill.tax_amount), 185, totalOffsetY, { align: "right" });
+      doc.text(`GST (${bill.gst_rate ?? 18}%)`, totalsStartX, totalOffsetY);
+      doc.text(fmt(bill.tax_amount), 190, totalOffsetY, { align: "right" });
     }
     
     if (bill.discount > 0) {
       totalOffsetY += 6;
-      doc.text("Discount:", 140, totalOffsetY);
-      doc.text(`-${fmt(bill.discount)}`, 185, totalOffsetY, { align: "right" });
+      doc.text("Discount", totalsStartX, totalOffsetY);
+      doc.text(`-${fmt(bill.discount)}`, 190, totalOffsetY, { align: "right" });
     }
 
-    totalOffsetY += 4;
-    doc.setDrawColor(229, 231, 235); // Light divider line
-    doc.setLineWidth(0.5);
-    doc.line(140, totalOffsetY, 185, totalOffsetY);
+    // Grand Total Row - Mustard Yellow Background
+    totalOffsetY += 3;
+    doc.setFillColor(244, 197, 24); // Mustard yellow
+    doc.setDrawColor(43, 42, 61);
+    doc.setLineWidth(1);
+    doc.rect(totalsStartX, totalOffsetY, totalsWidth, 10, "FD");
 
-    totalOffsetY += 7;
     doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
-    doc.setFontSize(11);
-    doc.setTextColor(17, 24, 39);
-    doc.text("Total:", 140, totalOffsetY);
-    doc.text(fmt(bill.total_amount), 185, totalOffsetY, { align: "right" });
+    doc.setFontSize(9.5);
+    doc.setTextColor(43, 42, 61);
+    doc.text("Total Due", totalsStartX + 4, totalOffsetY + 6.5);
+    doc.text(fmt(bill.total_amount), 190, totalOffsetY + 6.5, { align: "right" });
 
-    // 7. Footer
-    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
+    // 7. Render Payment Details Block
+    let paymentY = Math.max(doc.lastAutoTable.finalY + 12, totalOffsetY + 16);
+    
+    if (paymentY > 230) {
+      doc.addPage();
+      // Reset background and borders for page 2
+      doc.setFillColor(250, 248, 242);
+      doc.rect(0, 0, 210, 297, "F");
+      doc.setDrawColor(43, 42, 61);
+      doc.setLineWidth(1);
+      doc.rect(15, 15, 180, 267, "D");
+      paymentY = 25;
+    }
+
+    doc.setDrawColor(43, 42, 61);
+    doc.setLineWidth(0.5);
+    doc.line(15, paymentY, 195, paymentY);
+
+    // Left Column: Payment Methods
+    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
     doc.setFontSize(7.5);
-    doc.setTextColor(156, 163, 175);
-    doc.text("Thank you for choosing Shree Royal Car!", 105, 280, { align: "center" });
+    doc.setTextColor(90, 90, 112); // Soft navy
+    doc.text("PAYMENT METHODS", 20, paymentY + 7);
+
+    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(43, 42, 61); // Navy
+    doc.text("Accepted via:", 20, paymentY + 13);
+    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
+    doc.text(bill.payment_method === "online" ? "UPI / Bank Transfer" : "Cash", 45, paymentY + 13);
+
+    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
+    doc.text("UPI ID:", 20, paymentY + 18);
+    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
+    doc.text("shreeroyalcar@upi", 45, paymentY + 18);
+
+    // Right Column: Bank Transfer
+    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
+    doc.setFontSize(7.5);
+    doc.setTextColor(90, 90, 112);
+    doc.text("BANK TRANSFER", 110, paymentY + 7);
+
+    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(43, 42, 61);
+    doc.text("Bank:", 110, paymentY + 13);
+    doc.text("HDFC Bank, Navrangpura Branch", 132, paymentY + 13);
+
+    doc.text("Account No:", 110, paymentY + 18);
+    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
+    doc.text("50100123456789", 132, paymentY + 18);
+
+    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
+    doc.text("IFSC:", 110, paymentY + 23);
+    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
+    doc.text("HDFC0001234", 132, paymentY + 23);
+
+    // 8. Notes / Remarks (if present)
+    let notesY = paymentY + 30;
+    if (bill.notes && bill.notes.trim()) {
+      doc.setDrawColor(216, 210, 190); // Line/Border
+      doc.setLineWidth(0.5);
+      doc.line(20, notesY, 190, notesY);
+      
+      doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(90, 90, 112);
+      const splitNotes = doc.splitTextToSize(bill.notes, 170);
+      doc.text(splitNotes, 20, notesY + 5);
+    }
+
+    // 9. Footer banner
+    doc.setFillColor(43, 42, 61); // Navy
+    doc.rect(15, 271, 180, 11, "F");
+
+    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(244, 197, 24); // Mustard yellow
+    doc.text("Thank you for trusting SHREE ROYAL CAR", 20, 278);
+
+    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(252, 233, 168); // Soft yellow
+    doc.text("+91 98765 43210  |  billing@shreeroyalcar.in", 190, 278, { align: "right" });
 
     doc.save(`INV-${bill.bill_number}.pdf`);
     showToast("PDF downloaded");

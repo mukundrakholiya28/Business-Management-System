@@ -49,7 +49,7 @@ export async function POST(request) {
       to: recipient,
       type: "template",
       template: {
-        name: "jaspers_market_order_confirmation_v1",
+        name: "shree_royal_invoice",
         language: { code: "en_US" },
         components: [
           {
