@@ -20,6 +20,44 @@ export const runtime = "nodejs";
 // Give Puppeteer enough time on Vercel (max 60s on Pro, 10s on Hobby)
 export const maxDuration = 60;
 
+// ── Font paths (TTF files in public/fonts) ───────────────────────────────────
+
+const FONTS_DIR = path.join(process.cwd(), "public", "fonts");
+
+function fontBase64(relativePath) {
+  const buf = fs.readFileSync(path.join(FONTS_DIR, relativePath));
+  return buf.toString("base64");
+}
+
+function buildFontFaces() {
+  return `
+@font-face {
+  font-family: 'Poppins'; font-weight: 400; font-style: normal;
+  src: url('data:font/truetype;base64,${fontBase64("Poppins/Poppins-Regular.ttf")}') format('truetype');
+}
+@font-face {
+  font-family: 'Poppins'; font-weight: 500; font-style: normal;
+  src: url('data:font/truetype;base64,${fontBase64("Poppins/Poppins-Medium.ttf")}') format('truetype');
+}
+@font-face {
+  font-family: 'Poppins'; font-weight: 600; font-style: normal;
+  src: url('data:font/truetype;base64,${fontBase64("Poppins/Poppins-SemiBold.ttf")}') format('truetype');
+}
+@font-face {
+  font-family: 'Poppins'; font-weight: 700; font-style: normal;
+  src: url('data:font/truetype;base64,${fontBase64("Poppins/Poppins-Bold.ttf")}') format('truetype');
+}
+@font-face {
+  font-family: 'Oswald'; font-weight: 100 900; font-style: normal;
+  src: url('data:font/truetype;base64,${fontBase64("Oswald/Oswald-VariableFont_wght.ttf")}') format('truetype');
+}
+@font-face {
+  font-family: 'NotoSans'; font-weight: 100 900; font-style: normal;
+  src: url('data:font/truetype;base64,${fontBase64("Noto_Sans/NotoSans-VariableFont_wdth,wght.ttf")}') format('truetype');
+}
+  `;
+}
+
 // ── Chromium / Puppeteer bootstrap ───────────────────────────────────────────
 
 async function getBrowser() {
@@ -68,7 +106,6 @@ const TEMPLATE_PATH = path.join(
 
 // Public assets are served by Next.js at / — we inline the CSS directly so
 // Puppeteer doesn't need to make a network request for it.
-const CSS_PATH = path.join(process.cwd(), "public", "invoice.css");
 const LOGO_PATH = path.join(process.cwd(), "public", "logo.png");
 
 function logoAsDataUrl() {
@@ -77,8 +114,29 @@ function logoAsDataUrl() {
 }
 
 function cssAsInlineTag() {
-  const css = fs.readFileSync(CSS_PATH, "utf-8");
-  return `<style>${css}</style>`;
+  // Read the SOURCE CSS (no embedded fonts) from shree-royal-invoice — clean baseline
+  const srcCssPath = path.join(process.cwd(), "shree-royal-invoice", "public", "css", "invoice.css");
+  let css = fs.readFileSync(srcCssPath, "utf-8");
+
+  // Thin borders: 2px → 1px, 1.5px → 1px
+  css = css
+    .replace(/border:\s*2px solid var\(--navy\)/g,        "border: 1px solid var(--navy)")
+    .replace(/border-bottom:\s*2px solid var\(--navy\)/g, "border-bottom: 1px solid var(--navy)")
+    .replace(/border-top:\s*2px solid var\(--navy\)/g,    "border-top: 1px solid var(--navy)")
+    .replace(/border:\s*1\.5px solid var\(--navy\)/g,     "border: 1px solid var(--navy)");
+
+  // Add NotoSans as fallback for ₹ and other missing glyphs
+  css = css
+    .replace(
+      "--font-body:  'Poppins', 'Helvetica Neue', Arial, sans-serif;",
+      "--font-body:  'Poppins', 'NotoSans', 'Helvetica Neue', Arial, sans-serif;"
+    )
+    .replace(
+      "--font-brand: 'Vortice', 'Oswald', 'Archivo Black', sans-serif;",
+      "--font-brand: 'Vortice', 'Oswald', 'NotoSans', 'Archivo Black', sans-serif;"
+    );
+
+  return `<style>${buildFontFaces()}\n${css}</style>`;
 }
 
 // ── Route handler ─────────────────────────────────────────────────────────────
