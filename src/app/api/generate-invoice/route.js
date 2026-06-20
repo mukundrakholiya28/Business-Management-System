@@ -162,24 +162,19 @@ export async function POST(request) {
     // ── Render HTML ───────────────────────────────────────────────────────────
     let html = await ejs.renderFile(TEMPLATE_PATH, templateData, { async: false });
 
-    // Inline the CSS so it works without a running web server.
-    // Keep the Google Fonts link — Puppeteer will fetch it (networkidle0 below).
-    // Add a safe fallback in case fonts don't load.
-    html = html.replace(
-      /<link[^>]+invoice\.css[^>]+>/,
-      cssAsInlineTag() +
-      `<style>
-        /* Fallback if Google Fonts are unreachable */
-        body { font-family: 'Poppins', 'Segoe UI', Arial, sans-serif; }
-        .brand-text .name, .invoice-tag .label { font-family: 'Oswald', 'Arial Black', sans-serif; }
-      </style>`
-    );
+    // Strip Google Fonts requests — fonts are embedded as base64 in the CSS.
+    // Inline the CSS so no running server is needed.
+    html = html
+      .replace(/<link[^>]+fonts\.googleapis[^>]+>/g, "")
+      .replace(/<link[^>]+fonts\.gstatic[^>]+>/g,   "")
+      .replace(/<link[^>]+invoice\.css[^>]+>/,       cssAsInlineTag());
 
     // ── Render PDF ────────────────────────────────────────────────────────────
     const browser = await getBrowser();
-    const page = await browser.newPage();
+    const page    = await browser.newPage();
 
-    await page.setContent(html, { waitUntil: "networkidle0", timeout: 15000 });
+    // domcontentloaded is enough — no external resources to wait for
+    await page.setContent(html, { waitUntil: "domcontentloaded", timeout: 15000 });
     await page.evaluateHandle("document.fonts.ready");
 
     const pdf = await page.pdf({
