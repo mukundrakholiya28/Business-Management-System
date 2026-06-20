@@ -12,6 +12,9 @@ export const metadata = {
   title: "Shree Royal Car — Workshop Manager",
   description:
     "Business Management System for Shree Royal Car workshop. Manage customers, vehicles, billing, and worker payroll.",
+  icons: {
+    icon: "/logo.png",
+  },
 };
 
 export default function RootLayout({ children }) {

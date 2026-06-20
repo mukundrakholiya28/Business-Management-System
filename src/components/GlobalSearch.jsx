@@ -33,9 +33,11 @@ function ResultItem({ r, onClick }) {
         </>
       ) : (
         <>
-          <div className="flat-avatar w-8 h-8 bg-gray-100 text-gray-500 text-[10px] font-semibold rounded-lg shrink-0">
-            {formatVehicleNumber(r.vehicle.vehicle_number).slice(-4)}
-          </div>
+          <img
+            src="/logo.png"
+            alt="Car Logo"
+            className="w-8 h-8 rounded-lg object-contain bg-gray-50 border border-gray-100 shrink-0"
+          />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-gray-900">{formatVehicleNumber(r.vehicle.vehicle_number)}</p>
             <p className="text-[11px] text-gray-400 mt-0.5">{r.vehicle.make} {r.vehicle.model} · {r.customer?.name}</p>
