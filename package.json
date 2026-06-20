@@ -12,6 +12,7 @@
     "@sparticuz/chromium": "^149.0.0",
     "@supabase/supabase-js": "^2.108.2",
     "ejs": "^6.0.1",
+    "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
     "lucide-react": "^1.21.0",

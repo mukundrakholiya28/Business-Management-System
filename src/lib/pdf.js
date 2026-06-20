@@ -1,22 +1,19 @@
 /**
  * exportInvoicePDF
  * ─────────────────────────────────────────────────────────────────────────
- * 1. Fetches the fully-rendered invoice HTML from GET /api/generate-invoice
- * 2. Injects it into a hidden <iframe>
- * 3. Calls iframe.contentWindow.print() — the browser's native print dialog
- *    opens pre-set to "Save as PDF"
+ * 1. Fetches the fully-rendered invoice HTML from POST /api/generate-invoice
+ * 2. Injects it into a hidden off-screen iframe so the browser lays it out
+ *    with all fonts, CSS, and images exactly as in the preview
+ * 3. Uses html2canvas to screenshot the rendered invoice at 2× scale
+ * 4. Uses jsPDF to place that screenshot into an A4 PDF and save it
  *
- * This means the PDF looks exactly like the browser preview:
- * - All fonts render correctly (including ₹)
- * - All CSS borders, colours, and layout are pixel-perfect
- * - No Puppeteer / server-side Chrome needed at runtime
- *
- * @param {{ bill, items, customer, vehicle }} data
- * @param {function} [onToast]
+ * This gives a pixel-perfect copy of the HTML — every font, border, colour,
+ * and the ₹ symbol all render correctly because it's a real browser rendering.
  */
+
 export async function exportInvoicePDF({ bill, items, customer, vehicle }, onToast) {
   try {
-    // ── 1. Get the rendered HTML from the server ──────────────────────────
+    // ── 1. Get the rendered HTML ──────────────────────────────────────────
     const res = await fetch("/api/generate-invoice", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
@@ -28,67 +25,103 @@ export async function exportInvoicePDF({ bill, items, customer, vehicle }, onToa
       throw new Error(err.error || `HTTP ${res.status}`);
     }
 
-    // Server now returns HTML (text/html) instead of a PDF blob
-    const contentType = res.headers.get("content-type") || "";
+    const html = await res.text();
 
-    if (contentType.includes("text/html")) {
-      // ── 2. Print the HTML via a hidden iframe ───────────────────────────
-      const html = await res.text();
-      printHtmlAsPdf(html, `INV-${bill.bill_number}`);
-      onToast?.("Print dialog opened — choose 'Save as PDF'");
+    // ── 2. Render HTML in a hidden iframe ─────────────────────────────────
+    const iframe = document.createElement("iframe");
+    iframe.style.cssText = [
+      "position:fixed",
+      "top:0",
+      "left:-9999px",
+      "width:794px",        // A4 at 96dpi
+      "height:1123px",
+      "border:none",
+      "visibility:hidden",
+    ].join(";");
+    document.body.appendChild(iframe);
+
+    await new Promise((resolve) => {
+      iframe.onload = resolve;
+      const doc = iframe.contentDocument || iframe.contentWindow.document;
+      doc.open();
+      doc.write(html);
+      doc.close();
+    });
+
+    // Wait for fonts to finish loading inside the iframe
+    const iframeWin = iframe.contentWindow;
+    if (iframeWin.document.fonts?.ready) {
+      await iframeWin.document.fonts.ready;
     } else {
-      // Legacy: server returned a PDF blob (old Puppeteer path)
-      const blob = await res.blob();
-      triggerDownload(blob, `INV-${bill.bill_number}.pdf`);
-      onToast?.("PDF downloaded");
+      await new Promise((r) => setTimeout(r, 400));
     }
+
+    // ── 3. Screenshot with html2canvas ────────────────────────────────────
+    const { default: html2canvas } = await import("html2canvas");
+
+    const invoiceEl = iframe.contentDocument.querySelector(".sheet") ||
+                      iframe.contentDocument.body;
+
+    const canvas = await html2canvas(invoiceEl, {
+      scale:          2,           // 2× for crisp text at A4 print resolution
+      useCORS:        true,
+      allowTaint:     false,
+      backgroundColor: "#ffffff",
+      logging:        false,
+      // Tell html2canvas the element is inside an iframe
+      windowWidth:    794,
+      windowHeight:   invoiceEl.scrollHeight,
+    });
+
+    // ── 4. Place canvas into jsPDF A4 ─────────────────────────────────────
+    const { default: jsPDF } = await import("jspdf");
+
+    const imgData = canvas.toDataURL("image/jpeg", 0.97);
+
+    // A4 dimensions in mm
+    const A4_W = 210;
+    const A4_H = 297;
+
+    // Scale image to fit A4 width, allow multi-page if taller
+    const imgW   = A4_W;
+    const imgH   = (canvas.height / canvas.width) * A4_W;
+
+    const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+
+    let yOffset = 0;
+    let remaining = imgH;
+
+    while (remaining > 0) {
+      const sliceH = Math.min(remaining, A4_H);
+
+      // For pages after the first, add a new page
+      if (yOffset > 0) pdf.addPage();
+
+      // Clip by drawing only the relevant slice of the image
+      // html2canvas gives us the full image; we use pdf.addImage with y offset
+      pdf.addImage(
+        imgData,
+        "JPEG",
+        0,                          // x
+        -(yOffset),                 // y — negative offsets into the tall image
+        imgW,
+        imgH,
+        undefined,
+        "FAST"
+      );
+
+      yOffset   += A4_H;
+      remaining -= A4_H;
+    }
+
+    pdf.save(`INV-${bill.bill_number}.pdf`);
+
+    // ── 5. Cleanup ────────────────────────────────────────────────────────
+    document.body.removeChild(iframe);
+    onToast?.("PDF downloaded");
+
   } catch (err) {
-    console.error("[exportInvoicePDF]", err.message);
+    console.error("[exportInvoicePDF]", err);
     onToast?.(`PDF failed: ${err.message}`);
   }
-}
-
-// ── Print helper ──────────────────────────────────────────────────────────────
-
-function printHtmlAsPdf(html, filename) {
-  // Create a hidden iframe
-  const iframe = document.createElement("iframe");
-  iframe.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:0;height:0;border:none;";
-  document.body.appendChild(iframe);
-
-  const doc = iframe.contentDocument || iframe.contentWindow.document;
-  doc.open();
-  doc.write(html);
-  doc.close();
-
-  // Wait for fonts + images to load, then print
-  iframe.onload = () => {
-    // Give fonts a moment to render (document.fonts.ready in the iframe)
-    const win = iframe.contentWindow;
-    const tryPrint = () => {
-      win.focus();
-      win.print();
-      // Remove iframe after print dialog closes
-      setTimeout(() => {
-        document.body.removeChild(iframe);
-      }, 1000);
-    };
-
-    if (win.document.fonts?.ready) {
-      win.document.fonts.ready.then(tryPrint);
-    } else {
-      setTimeout(tryPrint, 300);
-    }
-  };
-}
-
-function triggerDownload(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const a   = document.createElement("a");
-  a.href     = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
 }
