@@ -182,6 +182,80 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
 }
 
 /**
+ * Load the single-row business profile from Supabase.
+ * Returns default values if the table is empty.
+ */
+export async function loadProfile() {
+  if (!isSupabaseReady()) throw new Error("Supabase is not configured.");
+
+  const { data, error } = await supabase
+    .from("business_profile")
+    .select("*")
+    .limit(1)
+    .single();
+
+  if (error && error.code !== "PGRST116") throw new Error(error.message);
+
+  return data || {
+    name:            "Shree Royal Car",
+    tagline:         "Automotive Repair & Car Wash",
+    established:     "2004",
+    address:         "Ahmedabad, Gujarat",
+    phone:           "+91 98765 43210",
+    email:           "billing@shreeroyalcar.in",
+    gstin:           "",
+    payment_methods: "UPI / Bank Transfer / Cash",
+    upi_id:          "",
+    bank_name:       "",
+    account_number:  "",
+    ifsc:            "",
+    invoice_notes:   "Payment due within 7 days of invoice date.",
+  };
+}
+
+/**
+ * Upsert the business profile row.
+ */
+export async function saveProfile(profile) {
+  if (!isSupabaseReady()) throw new Error("Supabase is not configured.");
+
+  const payload = {
+    name:            profile.name,
+    tagline:         profile.tagline,
+    established:     profile.established,
+    address:         profile.address,
+    phone:           profile.phone,
+    email:           profile.email,
+    gstin:           profile.gstin ?? "",
+    payment_methods: profile.payment_methods,
+    upi_id:          profile.upi_id ?? "",
+    bank_name:       profile.bank_name ?? "",
+    account_number:  profile.account_number ?? "",
+    ifsc:            profile.ifsc ?? "",
+    invoice_notes:   profile.invoice_notes ?? "",
+  };
+
+  if (profile.id) {
+    const { data, error } = await supabase
+      .from("business_profile")
+      .update(payload)
+      .eq("id", profile.id)
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    return data;
+  }
+
+  const { data, error } = await supabase
+    .from("business_profile")
+    .insert([payload])
+    .select("*")
+    .single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+/**
  * Update customer profile fields (name, phone_number, email, address).
  * Does NOT touch vehicles.
  */

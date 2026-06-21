@@ -160,3 +160,38 @@ CREATE TRIGGER trg_workers_updated BEFORE UPDATE ON workers
 
 -- Add payment_method column to bills (if upgrading from older schema)
 ALTER TABLE bills ADD COLUMN IF NOT EXISTS payment_method TEXT;
+
+-- ──────────────────────────────────────────────────────────────
+-- 9. BUSINESS PROFILE  (single-row settings table)
+-- ──────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS business_profile (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name            TEXT NOT NULL DEFAULT 'Shree Royal Car',
+  tagline         TEXT NOT NULL DEFAULT 'Automotive Repair & Car Wash',
+  established     TEXT NOT NULL DEFAULT '2004',
+  address         TEXT NOT NULL DEFAULT 'Ahmedabad, Gujarat',
+  phone           TEXT NOT NULL DEFAULT '+91 98765 43210',
+  email           TEXT NOT NULL DEFAULT 'billing@shreeroyalcar.in',
+  gstin           TEXT NOT NULL DEFAULT '',
+  payment_methods TEXT NOT NULL DEFAULT 'UPI / Bank Transfer / Cash',
+  upi_id          TEXT NOT NULL DEFAULT '',
+  bank_name       TEXT NOT NULL DEFAULT '',
+  account_number  TEXT NOT NULL DEFAULT '',
+  ifsc            TEXT NOT NULL DEFAULT '',
+  invoice_notes   TEXT NOT NULL DEFAULT 'Payment due within 7 days of invoice date.',
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TRIGGER trg_business_profile_updated BEFORE UPDATE ON business_profile
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- Seed a default row (idempotent)
+INSERT INTO business_profile (
+  name, tagline, established, address, phone, email, gstin,
+  payment_methods, upi_id, bank_name, account_number, ifsc, invoice_notes
+) VALUES (
+  'Shree Royal Car', 'Automotive Repair & Car Wash', '2004',
+  'Ahmedabad, Gujarat', '+91 98765 43210', 'billing@shreeroyalcar.in', '',
+  'UPI / Bank Transfer / Cash', '', '', '', '', 'Payment due within 7 days of invoice date.'
+) ON CONFLICT DO NOTHING;

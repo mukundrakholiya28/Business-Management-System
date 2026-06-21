@@ -13,6 +13,7 @@ import { NextResponse } from "next/server";
 import ejs from "ejs";
 import path from "path";
 import fs from "fs";
+import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
@@ -168,7 +169,7 @@ function applyRupeeSpan(html) {
     .replace(/₹/g,        span);
 }
 
-function buildTemplateData({ bill, items, customer, vehicle }) {
+function buildTemplateData({ bill, items, customer, vehicle, profile = null }) {
   const invoiceDate = new Date(bill.created_at).toLocaleDateString("en-IN", {
     day: "2-digit", month: "long", year: "numeric",
   });
@@ -177,13 +178,13 @@ function buildTemplateData({ bill, items, customer, vehicle }) {
 
   return {
     company: {
-      name:        "Shree Royal Car",
-      tagline:     "Automotive Repair & Car Wash",
-      established: "2004",
-      address:     "Ahmedabad, Gujarat",
-      phone:       process.env.NEXT_PUBLIC_COMPANY_PHONE   || "+91 98765 43210",
-      email:       process.env.NEXT_PUBLIC_COMPANY_EMAIL   || "billing@shreeroyalcar.in",
-      gstin:       process.env.NEXT_PUBLIC_COMPANY_GSTIN   || "",
+      name:        profile?.name        || "Shree Royal Car",
+      tagline:     profile?.tagline     || "Automotive Repair & Car Wash",
+      established: profile?.established || "2004",
+      address:     profile?.address     || "Ahmedabad, Gujarat",
+      phone:       profile?.phone       || process.env.NEXT_PUBLIC_COMPANY_PHONE   || "+91 98765 43210",
+      email:       profile?.email       || process.env.NEXT_PUBLIC_COMPANY_EMAIL   || "billing@shreeroyalcar.in",
+      gstin:       profile?.gstin       || process.env.NEXT_PUBLIC_COMPANY_GSTIN   || "",
       logo:        logoAsDataUrl(),
     },
     invoice: {
@@ -218,12 +219,12 @@ function buildTemplateData({ bill, items, customer, vehicle }) {
       total:     Number(bill.total_amount),
     },
     payment: {
-      method:        process.env.NEXT_PUBLIC_PAYMENT_METHODS || "UPI / Bank Transfer / Cash",
-      upiId:         process.env.NEXT_PUBLIC_UPI_ID          || "",
-      bankName:      process.env.NEXT_PUBLIC_BANK_NAME       || "",
-      accountNumber: process.env.NEXT_PUBLIC_ACCOUNT_NUMBER  || "",
-      ifsc:          process.env.NEXT_PUBLIC_IFSC            || "",
-      notes:         bill.notes || "Thank you for your business.",
+      method:        profile?.payment_methods || process.env.NEXT_PUBLIC_PAYMENT_METHODS || "UPI / Bank Transfer / Cash",
+      upiId:         profile?.upi_id          || process.env.NEXT_PUBLIC_UPI_ID          || "",
+      bankName:      profile?.bank_name        || process.env.NEXT_PUBLIC_BANK_NAME       || "",
+      accountNumber: profile?.account_number   || process.env.NEXT_PUBLIC_ACCOUNT_NUMBER  || "",
+      ifsc:          profile?.ifsc             || process.env.NEXT_PUBLIC_IFSC            || "",
+      notes:         bill.notes || profile?.invoice_notes || "Thank you for your business.",
     },
   };
 }
@@ -276,7 +277,23 @@ export async function GET() {
 export async function POST(request) {
   try {
     const { bill, items, customer, vehicle } = await request.json();
-    const templateData = buildTemplateData({ bill, items, customer, vehicle });
+
+    // Fetch business profile from Supabase (falls back to env vars if unavailable)
+    let profile = null;
+    try {
+      const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+      );
+      const { data } = await supabase
+        .from("business_profile")
+        .select("*")
+        .limit(1)
+        .single();
+      profile = data;
+    } catch (_) { /* use env var fallbacks */ }
+
+    const templateData = buildTemplateData({ bill, items, customer, vehicle, profile });
     const html = await renderInvoiceHtml(templateData);
 
     return new Response(html, {
