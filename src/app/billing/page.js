@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import Navbar from "@/components/Navbar";
 import { useProtectedRoute } from "@/context/AuthContext";
-import { SectionHeader, StatusBadge, StatusDot, EmptyState, Modal, StatusSelect } from "@/components/ui";
+import { SectionHeader, StatusBadge, StatusDot, EmptyState, Modal, StatusSelect, PageSkeleton } from "@/components/ui";
 import {
   formatCurrency,
   formatDate,
@@ -129,11 +129,9 @@ export default function BillingPage() {
 
   if (loading || !user || loadingData) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#F4F5F7]">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-          <span className="text-xs text-gray-400 font-medium animate-pulse">Checking credentials...</span>
-        </div>
+      <div className="flex flex-col min-h-screen bg-page">
+        <Navbar />
+        <PageSkeleton variant="billing" />
       </div>
     );
   }

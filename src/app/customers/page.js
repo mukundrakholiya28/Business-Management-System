@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Navbar from "@/components/Navbar";
 import { useProtectedRoute } from "@/context/AuthContext";
-import { EmptyState, Modal, SectionHeader } from "@/components/ui";
+import { EmptyState, Modal, SectionHeader, PageSkeleton } from "@/components/ui";
 import { formatDate, getInitials, normalizeSearch, formatVehicleNumber } from "@/lib/helpers";
 import { loadWorkshopData, saveCustomerWithVehicles, deleteCustomer, updateCustomer } from "@/lib/workshop-data";
 import Link from "next/link";
@@ -107,11 +107,9 @@ export default function CustomersPage() {
 
   if (loading || loadingData || !user) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#F4F5F7]">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-          <span className="text-xs text-gray-400 font-medium animate-pulse">Loading customers...</span>
-        </div>
+      <div className="flex flex-col min-h-screen bg-page">
+        <Navbar />
+        <PageSkeleton variant="customers" />
       </div>
     );
   }

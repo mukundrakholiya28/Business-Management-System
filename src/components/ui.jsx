@@ -6,6 +6,310 @@ import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import ReactDOM from "react-dom";
 
 /**
+ * Skeleton shimmer — single animated bar.
+ * Usage: <Sk w="w-1/2" h="h-4" />
+ */
+export function Sk({ w = "w-full", h = "h-4", className = "" }) {
+  return (
+    <div
+      className={`rounded-lg bg-gray-200 animate-pulse ${w} ${h} ${className}`}
+      aria-hidden="true"
+    />
+  );
+}
+
+/**
+ * PageSkeleton — content-only skeleton (navbar rendered separately by the page).
+ * variant: "dashboard" | "billing" | "customers" | "customer-detail" | "profile" | "default"
+ */
+export function PageSkeleton({ variant = "default" }) {
+  // Profile uses max-w-4xl; all others use max-w-7xl — matches actual page containers
+  const maxW = variant === "profile" ? "max-w-4xl" : "max-w-7xl";
+
+  return (
+    <main className="flex-1">
+      <div className={`${maxW} mx-auto px-5 sm:px-6 lg:px-8 py-7`}>
+        {variant === "dashboard"       && <DashboardSkeleton />}
+        {variant === "billing"         && <BillingSkeleton />}
+        {variant === "customers"       && <CustomersSkeleton />}
+        {variant === "customer-detail" && <CustomerDetailSkeleton />}
+        {variant === "profile"         && <ProfileSkeleton />}
+        {variant === "default"         && <DefaultSkeleton />}
+      </div>
+    </main>
+  );
+}
+
+function ShimmerRow({ cols = [1] }) {
+  return (
+    <div className="flex items-center gap-4 py-3 border-b border-gray-50 last:border-0">
+      {cols.map((w, i) => <Sk key={i} w={w} h="h-3.5" />)}
+    </div>
+  );
+}
+
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-7">
+      {/* Page header — same as <div className="mb-7"> */}
+      <div className="space-y-1.5">
+        <Sk w="w-28" h="h-5" />
+        <Sk w="w-56" h="h-3" />
+      </div>
+
+      {/* Stat cards — grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 mb-7 */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+        {[...Array(3)].map((_, i) => (
+          <div key={i} className="flat-card space-y-3">
+            <div className="flex items-center justify-between">
+              <Sk w="w-24" h="h-3" />
+              <Sk w="w-14" h="h-5" className="rounded-full" />
+            </div>
+            <Sk w="w-28" h="h-8" />
+          </div>
+        ))}
+      </div>
+
+      {/* Two-column layout — grid grid-cols-1 xl:grid-cols-4 gap-4 */}
+      <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
+
+        {/* Recent invoices card — xl:col-span-3 */}
+        <div className="xl:col-span-3 flat-card">
+          {/* SectionHeader */}
+          <div className="flex items-center justify-between mb-5">
+            <div className="space-y-1.5"><Sk w="w-32" h="h-4" /><Sk w="w-36" h="h-3" /></div>
+            <Sk w="w-16" h="h-7" className="rounded-lg" />
+          </div>
+          {/* Invoice rows */}
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className={`flex items-center justify-between py-3 ${i < 4 ? "border-b border-gray-50" : ""}`}>
+              <div className="flex items-center gap-3">
+                <Sk w="w-8 shrink-0" h="h-8" className="rounded-lg" />
+                <div className="space-y-1.5">
+                  <Sk w="w-24" h="h-3.5" />
+                  <Sk w="w-36" h="h-3" />
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <Sk w="w-16" h="h-5" className="rounded-lg" />
+                <Sk w="w-20" h="h-4" />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Quick stats sidebar */}
+        <div className="space-y-3">
+          {[
+            ["w-20","w-10","w-24"],
+            ["w-16","w-10","w-20"],
+          ].map((widths, i) => (
+            <div key={i} className="flat-card !py-3 !px-4 space-y-1.5">
+              <Sk w={widths[0]} h="h-3" />
+              <Sk w={widths[1]} h="h-7" />
+              <Sk w={widths[2]} h="h-3" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BillingSkeleton() {
+  return (
+    <div className="space-y-5">
+      {/* Page header — flex flex-wrap items-start justify-between gap-3 mb-6 */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-1.5"><Sk w="w-20" h="h-5" /><Sk w="w-64" h="h-3" /></div>
+        <Sk w="w-28" h="h-9" className="rounded-lg" />
+      </div>
+
+      {/* Toolbar — flex flex-wrap items-end gap-3 mb-5 */}
+      <div className="flex flex-wrap items-end gap-3">
+        <Sk w="w-48" h="h-9" className="rounded-lg flex-1 min-w-[200px]" />
+        <Sk w="w-44" h="h-9" className="rounded-lg" />
+        <Sk w="w-44" h="h-9" className="rounded-lg" />
+      </div>
+
+      {/* Bills table — flat-card p-0 */}
+      <div className="flat-card p-0 overflow-hidden">
+        {/* Table header */}
+        <div className="flex gap-3 px-5 py-3 border-b border-gray-100">
+          {["w-20","w-28","w-24","w-16","w-14","w-20","w-20"].map((w, i) => (
+            <Sk key={i} w={w} h="h-3" />
+          ))}
+        </div>
+        {/* Rows */}
+        {[...Array(8)].map((_, i) => (
+          <div key={i} className="flex gap-3 px-5 py-3.5 border-b border-gray-50 last:border-0">
+            {["w-20","w-28","w-24","w-16","w-14","w-20","w-20"].map((w, j) => (
+              <Sk key={j} w={w} h="h-3.5" />
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CustomersSkeleton() {
+  return (
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-1.5"><Sk w="w-28" h="h-5" /><Sk w="w-72" h="h-3" /></div>
+        <Sk w="w-32" h="h-9" className="rounded-lg" />
+      </div>
+
+      {/* Stat cards — grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5 */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {["Customers","Vehicles"].map((_, i) => (
+          <div key={i} className="flat-card space-y-2">
+            <Sk w="w-20" h="h-3" />
+            <Sk w="w-12" h="h-8" />
+          </div>
+        ))}
+      </div>
+
+      {/* Search card */}
+      <div className="flat-card">
+        <Sk w="w-full" h="h-9" className="rounded-lg" />
+      </div>
+
+      {/* Customer list card */}
+      <div className="flat-card p-0 overflow-hidden">
+        {[...Array(7)].map((_, i) => (
+          <div key={i} className="flex items-center gap-2 px-5 py-3.5 border-b border-gray-100 last:border-0">
+            {/* Avatar */}
+            <Sk w="w-9 shrink-0" h="h-9" className="rounded-xl" />
+            {/* Name + phone */}
+            <div className="flex-1 space-y-1.5">
+              <Sk w="w-36" h="h-3.5" />
+              <Sk w="w-28" h="h-3" />
+            </div>
+            {/* Vehicle pills */}
+            <div className="hidden sm:flex gap-1.5">
+              <Sk w="w-20" h="h-5" className="rounded-full" />
+            </div>
+            {/* Chevron */}
+            <Sk w="w-4 shrink-0" h="h-4" className="rounded" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CustomerDetailSkeleton() {
+  return (
+    <div className="space-y-5">
+      {/* Back button */}
+      <Sk w="w-32" h="h-4" className="rounded-lg" />
+
+      {/* Profile card — flat-card mb-6 */}
+      <div className="flat-card">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+          {/* Avatar */}
+          <Sk w="w-14 shrink-0" h="h-14" className="rounded-2xl" />
+          {/* Name + contacts */}
+          <div className="flex-1 space-y-2">
+            <Sk w="w-44" h="h-5" />
+            <Sk w="w-64" h="h-3" />
+            <Sk w="w-24" h="h-3" />
+          </div>
+          {/* Summary pills */}
+          <div className="flex flex-wrap gap-3 shrink-0">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="px-4 py-2 rounded-xl bg-gray-50 border border-gray-100 space-y-1.5">
+                <Sk w="w-12" h="h-2.5" />
+                <Sk w="w-10" h="h-5" />
+              </div>
+            ))}
+          </div>
+          {/* Edit button */}
+          <Sk w="w-14" h="h-8" className="rounded-lg shrink-0 self-start" />
+        </div>
+      </div>
+
+      {/* Vehicle cards */}
+      {[...Array(2)].map((_, i) => (
+        <div key={i} className="flat-card p-0 overflow-hidden">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-4">
+            <div className="flex items-center gap-3">
+              <Sk w="w-10 shrink-0" h="h-10" className="rounded-xl" />
+              <div className="space-y-1.5">
+                <Sk w="w-28" h="h-4" />
+                <Sk w="w-44" h="h-3" />
+              </div>
+            </div>
+            <div className="flex items-center gap-4 sm:gap-6">
+              <div className="text-right space-y-1"><Sk w="w-12" h="h-3" /><Sk w="w-8" h="h-4" /></div>
+              <div className="text-right space-y-1"><Sk w="w-16" h="h-3" /><Sk w="w-12" h="h-4" /></div>
+              <Sk w="w-20" h="h-8" className="rounded-lg" />
+              <Sk w="w-6" h="h-6" className="rounded" />
+            </div>
+          </div>
+          {/* Collapsed table hint */}
+          <div className="border-t border-gray-100 px-5 py-8 flex gap-4">
+            {["w-20","w-28","w-16","w-20","w-24"].map((w, j) => <Sk key={j} w={w} h="h-3" />)}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ProfileSkeleton() {
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="space-y-1.5">
+          <Sk w="w-40" h="h-5" />
+          <Sk w="w-80" h="h-3" />
+        </div>
+        <Sk w="w-28" h="h-9" className="rounded-lg" />
+      </div>
+
+      {/* grid grid-cols-1 lg:grid-cols-4 gap-5 */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
+        {/* Sidebar — 3 nav buttons */}
+        <div className="space-y-1">
+          {[...Array(3)].map((_, i) => (
+            <Sk key={i} w="w-full" h="h-10" className="rounded-xl" />
+          ))}
+        </div>
+
+        {/* Form panel — lg:col-span-3 flat-card */}
+        <div className="lg:col-span-3 flat-card space-y-5">
+          <Sk w="w-36" h="h-4" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className={`space-y-1.5 ${i === 6 ? "sm:col-span-2" : ""}`}>
+                <Sk w="w-20" h="h-3" />
+                <Sk w="w-full" h="h-9" className="rounded-lg" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DefaultSkeleton() {
+  return (
+    <div className="space-y-5">
+      <div className="space-y-1.5"><Sk w="w-36" h="h-5" /><Sk w="w-56" h="h-3" /></div>
+      <div className="flat-card space-y-3">
+        {[...Array(4)].map((_, i) => <Sk key={i} w={i % 2 === 0 ? "w-full" : "w-3/4"} h="h-4" />)}
+      </div>
+    </div>
+  );
+}
+
+/**
  * Flat stat card — large KPI number, uppercase label, optional trend pill
  */
 export function StatCard({ label, value, trend, trendLabel }) {

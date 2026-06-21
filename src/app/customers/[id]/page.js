@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import { useProtectedRoute } from "@/context/AuthContext";
-import { StatusSelect, EmptyState, Modal } from "@/components/ui";
+import { StatusSelect, EmptyState, Modal, PageSkeleton } from "@/components/ui";
 import { formatCurrency, formatDate, getInitials, generateId } from "@/lib/helpers";
 import { loadWorkshopData, saveBillWithItems, deleteVehicle, deleteBill, updateCustomer } from "@/lib/workshop-data";
 import { exportInvoicePDF } from "@/lib/pdf";
@@ -153,11 +153,9 @@ export default function CustomerDetailPage() {
 
   if (loading || loadingData) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#F4F5F7]">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-          <span className="text-xs text-gray-400 font-medium animate-pulse">Loading customer...</span>
-        </div>
+      <div className="flex flex-col min-h-screen bg-page">
+        <Navbar />
+        <PageSkeleton variant="customer-detail" />
       </div>
     );
   }

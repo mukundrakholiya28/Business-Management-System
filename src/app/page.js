@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import Navbar from "@/components/Navbar";
 import { useProtectedRoute } from "@/context/AuthContext";
 import { ArrowUpRight } from "lucide-react";
-import { StatCard, StatusSelect, SectionHeader } from "@/components/ui";
+import { StatCard, StatusSelect, SectionHeader, PageSkeleton } from "@/components/ui";
 import { formatCurrency, formatVehicleNumber } from "@/lib/helpers";
 import Link from "next/link";
 import { loadWorkshopData, saveBillWithItems } from "@/lib/workshop-data";
@@ -111,11 +111,9 @@ export default function DashboardPage() {
   // ── Loading / error ─────────────────────────────────────────────────────────
   if (loading || !user || loadingData) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#F4F5F7]">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-          <span className="text-xs text-gray-400 font-medium animate-pulse">Loading dashboard…</span>
-        </div>
+      <div className="flex flex-col min-h-screen bg-page">
+        <Navbar />
+        <PageSkeleton variant="dashboard" />
       </div>
     );
   }

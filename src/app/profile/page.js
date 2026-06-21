@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Navbar from "@/components/Navbar";
 import { useProtectedRoute } from "@/context/AuthContext";
 import { loadProfile, saveProfile } from "@/lib/workshop-data";
+import { PageSkeleton } from "@/components/ui";
 import { Building2, CreditCard, FileText, Phone, Mail, MapPin, Save } from "lucide-react";
 
 const SECTIONS = [
@@ -47,11 +48,9 @@ export default function ProfilePage() {
 
   if (loading || !user || loadingData) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#F4F5F7]">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-          <span className="text-xs text-gray-400 font-medium animate-pulse">Loading profile…</span>
-        </div>
+      <div className="flex flex-col min-h-screen bg-page">
+        <Navbar />
+        <PageSkeleton variant="profile" />
       </div>
     );
   }

@@ -5,6 +5,18 @@ export function isSupabaseReady() {
   return Boolean(supabase);
 }
 
+// ── Auth helper ───────────────────────────────────────────────────────────────
+
+/**
+ * Returns the current user's UUID.
+ * Throws if not authenticated — all data operations require auth.
+ */
+async function getUserId() {
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (error || !user) throw new Error("Not authenticated.");
+  return user.id;
+}
+
 // ─── Workshop data ────────────────────────────────────────────────────────────
 
 export async function loadWorkshopData() {
@@ -14,6 +26,8 @@ export async function loadWorkshopData() {
     );
   }
 
+  // RLS automatically filters to the current user's rows —
+  // no .eq("user_id", ...) needed here.
   const [customersResult, vehiclesResult, billsResult, billItemsResult] = await Promise.all([
     supabase.from("customers").select("*").order("created_at", { ascending: false }),
     supabase.from("vehicles").select("*").order("created_at", { ascending: false }),
@@ -29,8 +43,8 @@ export async function loadWorkshopData() {
   return {
     source: "supabase",
     customers: customersResult.data || [],
-    vehicles: vehiclesResult.data || [],
-    bills: billsResult.data || [],
+    vehicles:  vehiclesResult.data  || [],
+    bills:     billsResult.data     || [],
     billItems: billItemsResult.data || [],
   };
 }
@@ -39,6 +53,8 @@ export async function loadWorkshopData() {
 
 export async function saveCustomerWithVehicles({ customer, vehicles }) {
   if (!isSupabaseReady()) throw new Error("Supabase is not configured.");
+
+  const userId = await getUserId();
 
   if (!customer?.name || !customer?.phone_number) {
     throw new Error("Customer name and phone number are required.");
@@ -55,7 +71,7 @@ export async function saveCustomerWithVehicles({ customer, vehicles }) {
     seen.add(num);
   }
 
-  // Check for duplicate vehicle numbers already in DB
+  // Check for duplicate vehicle numbers for THIS user
   const { data: existingVehicles, error: lookupError } = await supabase
     .from("vehicles")
     .select("id, vehicle_number")
@@ -68,22 +84,23 @@ export async function saveCustomerWithVehicles({ customer, vehicles }) {
     );
   }
 
-  // Insert customer
+  // Insert customer — include user_id
   const { id: _id, ...customerPayload } = customer;
   const { data: createdCustomer, error: customerError } = await supabase
     .from("customers")
-    .insert([customerPayload])
+    .insert([{ ...customerPayload, user_id: userId }])
     .select("*")
     .single();
   if (customerError) throw new Error(customerError.message);
 
-  // Insert vehicles
+  // Insert vehicles — include user_id
   const vehiclePayload = validVehicles.map((v) => ({
-    customer_id: createdCustomer.id,
+    customer_id:    createdCustomer.id,
+    user_id:        userId,
     vehicle_number: v.vehicle_number.trim().toUpperCase(),
-    make: v.make?.trim() || null,
+    make:  v.make?.trim()  || null,
     model: v.model?.trim() || null,
-    year: v.year ? Number(v.year) : null,
+    year:  v.year ? Number(v.year) : null,
     color: v.color?.trim() || null,
   }));
 
@@ -101,8 +118,8 @@ export async function saveCustomerWithVehicles({ customer, vehicles }) {
 export async function saveBillWithItems({ bill, items, isEditing }) {
   if (!isSupabaseReady()) throw new Error("Supabase is not configured.");
 
-  // items === undefined means "don't touch line items" (e.g. status-only update)
-  // items === [] or items === [...] means "replace line items with this set"
+  // items === undefined  → status-only update, don't touch line items
+  // items === [] | [...]  → replace line items
   const itemsProvided = items !== undefined && items !== null;
 
   const itemPayload = itemsProvided
@@ -110,8 +127,8 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
         .filter((i) => i.description?.trim())
         .map((i) => ({
           description: i.description,
-          quantity: i.quantity,
-          unit_price: i.unit_price,
+          quantity:    i.quantity,
+          unit_price:  i.unit_price,
           total_price: i.quantity * i.unit_price,
         }))
     : null;
@@ -120,22 +137,21 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
     const { data: updatedBills, error: updateError } = await supabase
       .from("bills")
       .update({
-        customer_id: bill.customer_id,
-        vehicle_id: bill.vehicle_id,
-        subtotal: bill.subtotal,
-        tax_amount: bill.tax_amount,
-        discount: bill.discount,
-        total_amount: bill.total_amount,
-        status: bill.status,
+        customer_id:    bill.customer_id,
+        vehicle_id:     bill.vehicle_id,
+        subtotal:       bill.subtotal,
+        tax_amount:     bill.tax_amount,
+        discount:       bill.discount,
+        total_amount:   bill.total_amount,
+        status:         bill.status,
         payment_method: bill.payment_method || null,
-        notes: bill.notes,
+        notes:          bill.notes,
       })
       .eq("id", bill.id)
       .select("*");
 
     if (updateError) throw new Error(updateError.message);
 
-    // Only replace line items if they were explicitly passed in
     if (itemPayload !== null) {
       const { error: deleteError } = await supabase
         .from("bill_items")
@@ -152,21 +168,21 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
     }
 
     return {
-      bill: updatedBills?.[0] || bill,
+      bill:  updatedBills?.[0] || bill,
       items: itemPayload ? itemPayload.map((i) => ({ ...i, bill_id: bill.id })) : [],
     };
   }
 
-  // Create new bill
+  // Create new bill — include user_id
+  const userId = await getUserId();
   const { id: _id, bill_number: _bn, gst_enabled: _ge, gst_rate: _gr, ...billPayload } = bill;
   const { data: createdBill, error: createError } = await supabase
     .from("bills")
-    .insert([{ ...billPayload, payment_method: bill.payment_method || null }])
+    .insert([{ ...billPayload, user_id: userId, payment_method: bill.payment_method || null }])
     .select("*")
     .single();
   if (createError) throw new Error(createError.message);
 
-  // itemPayload is always defined for new bills (items is always passed on create)
   const newItemPayload = itemPayload ?? [];
   if (newItemPayload.length) {
     const { error: insertItemsError } = await supabase
@@ -176,18 +192,17 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
   }
 
   return {
-    bill: createdBill,
+    bill:  createdBill,
     items: newItemPayload.map((i) => ({ ...i, bill_id: createdBill.id })),
   };
 }
 
-/**
- * Load the single-row business profile from Supabase.
- * Returns default values if the table is empty.
- */
+// ─── Business profile ─────────────────────────────────────────────────────────
+
 export async function loadProfile() {
   if (!isSupabaseReady()) throw new Error("Supabase is not configured.");
 
+  // RLS filters to current user automatically
   const { data, error } = await supabase
     .from("business_profile")
     .select("*")
@@ -213,26 +228,26 @@ export async function loadProfile() {
   };
 }
 
-/**
- * Upsert the business profile row.
- */
 export async function saveProfile(profile) {
   if (!isSupabaseReady()) throw new Error("Supabase is not configured.");
 
+  const userId = await getUserId();
+
   const payload = {
+    user_id:         userId,
     name:            profile.name,
     tagline:         profile.tagline,
     established:     profile.established,
     address:         profile.address,
     phone:           profile.phone,
     email:           profile.email,
-    gstin:           profile.gstin ?? "",
+    gstin:           profile.gstin           ?? "",
     payment_methods: profile.payment_methods,
-    upi_id:          profile.upi_id ?? "",
-    bank_name:       profile.bank_name ?? "",
-    account_number:  profile.account_number ?? "",
-    ifsc:            profile.ifsc ?? "",
-    invoice_notes:   profile.invoice_notes ?? "",
+    upi_id:          profile.upi_id          ?? "",
+    bank_name:       profile.bank_name        ?? "",
+    account_number:  profile.account_number   ?? "",
+    ifsc:            profile.ifsc             ?? "",
+    invoice_notes:   profile.invoice_notes    ?? "",
   };
 
   if (profile.id) {
@@ -255,21 +270,20 @@ export async function saveProfile(profile) {
   return data;
 }
 
-/**
- * Update customer profile fields (name, phone_number, email, address).
- * Does NOT touch vehicles.
- */
+// ─── Customer updates ─────────────────────────────────────────────────────────
+
 export async function updateCustomer(customer) {
   if (!isSupabaseReady()) throw new Error("Supabase is not configured.");
   if (!customer?.id) throw new Error("Customer ID is required.");
 
+  // RLS ensures only the owner can update
   const { error, data } = await supabase
     .from("customers")
     .update({
-      name: customer.name,
+      name:         customer.name,
       phone_number: customer.phone_number,
-      email: customer.email ?? null,
-      address: customer.address ?? null,
+      email:        customer.email   ?? null,
+      address:      customer.address ?? null,
     })
     .eq("id", customer.id)
     .select("*")
@@ -281,16 +295,9 @@ export async function updateCustomer(customer) {
 
 // ─── Delete operations ────────────────────────────────────────────────────────
 
-/**
- * Delete a customer and all related vehicles, bills, and bill_items.
- * Supabase schema uses ON DELETE CASCADE on vehicles→customer and
- * bill_items→bill, so deleting the customer cascades to vehicles.
- * Bills have ON DELETE RESTRICT on customer_id, so we delete bills first.
- */
 export async function deleteCustomer(customerId) {
   if (!isSupabaseReady()) throw new Error("Supabase is not configured.");
 
-  // Delete bill_items for all bills of this customer
   const { data: customerBills } = await supabase
     .from("bills")
     .select("id")
@@ -299,142 +306,95 @@ export async function deleteCustomer(customerId) {
   if (customerBills?.length) {
     const billIds = customerBills.map((b) => b.id);
     const { error: itemsError } = await supabase
-      .from("bill_items")
-      .delete()
-      .in("bill_id", billIds);
+      .from("bill_items").delete().in("bill_id", billIds);
     if (itemsError) throw new Error(itemsError.message);
 
     const { error: billsError } = await supabase
-      .from("bills")
-      .delete()
-      .in("id", billIds);
+      .from("bills").delete().in("id", billIds);
     if (billsError) throw new Error(billsError.message);
   }
 
-  // Delete vehicles (cascades from customer, but explicit for safety)
   const { error: vehiclesError } = await supabase
-    .from("vehicles")
-    .delete()
-    .eq("customer_id", customerId);
+    .from("vehicles").delete().eq("customer_id", customerId);
   if (vehiclesError) throw new Error(vehiclesError.message);
 
-  // Delete customer
   const { error } = await supabase
-    .from("customers")
-    .delete()
-    .eq("id", customerId);
+    .from("customers").delete().eq("id", customerId);
   if (error) throw new Error(error.message);
 }
 
-/**
- * Delete a single vehicle and all its associated bills and bill_items.
- */
 export async function deleteVehicle(vehicleId) {
   if (!isSupabaseReady()) throw new Error("Supabase is not configured.");
 
   const { data: vehicleBills } = await supabase
-    .from("bills")
-    .select("id")
-    .eq("vehicle_id", vehicleId);
+    .from("bills").select("id").eq("vehicle_id", vehicleId);
 
   if (vehicleBills?.length) {
     const billIds = vehicleBills.map((b) => b.id);
     const { error: itemsError } = await supabase
-      .from("bill_items")
-      .delete()
-      .in("bill_id", billIds);
+      .from("bill_items").delete().in("bill_id", billIds);
     if (itemsError) throw new Error(itemsError.message);
 
     const { error: billsError } = await supabase
-      .from("bills")
-      .delete()
-      .in("id", billIds);
+      .from("bills").delete().in("id", billIds);
     if (billsError) throw new Error(billsError.message);
   }
 
   const { error } = await supabase
-    .from("vehicles")
-    .delete()
-    .eq("id", vehicleId);
+    .from("vehicles").delete().eq("id", vehicleId);
   if (error) throw new Error(error.message);
 }
 
-/**
- * Delete a single bill and its line items.
- */
 export async function deleteBill(billId) {
   if (!isSupabaseReady()) throw new Error("Supabase is not configured.");
 
   const { error: itemsError } = await supabase
-    .from("bill_items")
-    .delete()
-    .eq("bill_id", billId);
+    .from("bill_items").delete().eq("bill_id", billId);
   if (itemsError) throw new Error(itemsError.message);
 
   const { error } = await supabase
-    .from("bills")
-    .delete()
-    .eq("id", billId);
+    .from("bills").delete().eq("id", billId);
   if (error) throw new Error(error.message);
 }
 
+// ─── Workers / Salary (legacy) ────────────────────────────────────────────────
 
 export async function loadWorkers() {
   if (!isSupabaseReady()) throw new Error("Supabase is not configured.");
-
   const { data, error } = await supabase
-    .from("workers")
-    .select("*")
-    .order("joined_at", { ascending: false });
+    .from("workers").select("*").order("joined_at", { ascending: false });
   if (error) throw new Error(error.message);
   return data || [];
 }
 
 export async function saveWorker(worker) {
   if (!isSupabaseReady()) throw new Error("Supabase is not configured.");
-
   const { id, ...payload } = worker;
   if (id) {
     const { data, error } = await supabase
-      .from("workers")
-      .update(payload)
-      .eq("id", id)
-      .select("*")
-      .single();
+      .from("workers").update(payload).eq("id", id).select("*").single();
     if (error) throw new Error(error.message);
     return data;
   }
   const { data, error } = await supabase
-    .from("workers")
-    .insert([payload])
-    .select("*")
-    .single();
+    .from("workers").insert([payload]).select("*").single();
   if (error) throw new Error(error.message);
   return data;
 }
 
-// ─── Salary Records ───────────────────────────────────────────────────────────
-
 export async function loadSalaryRecords() {
   if (!isSupabaseReady()) throw new Error("Supabase is not configured.");
-
   const { data, error } = await supabase
-    .from("salary_records")
-    .select("*")
-    .order("date_paid", { ascending: false });
+    .from("salary_records").select("*").order("date_paid", { ascending: false });
   if (error) throw new Error(error.message);
   return data || [];
 }
 
 export async function saveSalaryRecord(record) {
   if (!isSupabaseReady()) throw new Error("Supabase is not configured.");
-
   const { id, ...payload } = record;
   const { data, error } = await supabase
-    .from("salary_records")
-    .insert([payload])
-    .select("*")
-    .single();
+    .from("salary_records").insert([payload]).select("*").single();
   if (error) throw new Error(error.message);
   return data;
 }
