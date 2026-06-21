@@ -157,53 +157,61 @@ export async function POST(request) {
       });
     }
 
-    let sendResult;
-    try {
-      sendResult = await resend.emails.send({
-        from: FROM,
-        to: [to],
-        subject: `Invoice ${invoiceNumber} from Shree Royal Car`,
-        html,
-        attachments,
-      });
-    } catch (sendErr) {
-      // Catch network or unexpected JS exceptions and format like a Resend error
-      sendResult = { error: sendErr };
+    const executeSend = async (fromAddress, toAddress, isRetryForSandbox = false) => {
+      // Modify HTML if it's sandbox redirect
+      let finalHtml = html;
+      let finalSubject = `Invoice ${invoiceNumber} from Shree Royal Car`;
+      
+      if (isRetryForSandbox) {
+        const warningBanner = `
+    <!-- Sandbox Warning -->
+    <div style="background-color:#FFFBEB;border-bottom:1px solid #F59E0B;padding:16px 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;color:#B45309;line-height:1.5;">
+      <strong style="font-size:14px;">⚠️ Resend Sandbox Redirect</strong><br/>
+      This email was intended for <strong>${to}</strong>, but has been redirected to <strong>${toAddress}</strong> because this Resend account is running in development/sandbox mode. To send to other recipients, please verify a domain at <a href="https://resend.com/domains" style="color:#B45309;font-weight:600;text-decoration:underline;">resend.com/domains</a>.
+    </div>
+        `;
+        const containerStart = 'rgba(0,0,0,0.08);">';
+        if (html.includes(containerStart)) {
+          finalHtml = html.replace(containerStart, `${containerStart}\n${warningBanner}`);
+        } else {
+          finalHtml = warningBanner + html;
+        }
+        finalSubject = `[SANDBOX REDIRECT] Invoice ${invoiceNumber} to ${customerName}`;
+      }
+
+      try {
+        return await resend.emails.send({
+          from: fromAddress,
+          to: [toAddress],
+          subject: finalSubject,
+          html: finalHtml,
+          attachments,
+        });
+      } catch (err) {
+        return { error: err };
+      }
+    };
+
+    let sendResult = await executeSend(FROM, to);
+
+    // If unverified domain error, retry using default sandbox onboarding email
+    if (sendResult.error && (sendResult.error.message || "").includes("domain is not verified")) {
+      const sandboxFrom = "Shree Royal Car <onboarding@resend.dev>";
+      console.warn(`[Resend] Unverified domain in FROM address: ${FROM}. Retrying with default sandbox: ${sandboxFrom}`);
+      sendResult = await executeSend(sandboxFrom, to);
     }
 
+    // If sandbox restriction error, redirect to owner's registered email
     if (sendResult.error) {
       const errorMsg = sendResult.error.message || "";
       if (errorMsg.includes("You can only send testing emails to your own email address")) {
         const match = errorMsg.match(/own email address \(([^)]+)\)/i);
         if (match && match[1]) {
           const authorizedEmail = match[1];
+          const sandboxFrom = "Shree Royal Car <onboarding@resend.dev>";
           console.warn(`[Resend Sandbox] Redirecting email to authorized address: ${authorizedEmail} (originally to: ${to})`);
 
-          // Premium sandbox warning banner styled to match the invoice design
-          const warningBanner = `
-    <!-- Sandbox Warning -->
-    <div style="background-color:#FFFBEB;border-bottom:1px solid #F59E0B;padding:16px 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;color:#B45309;line-height:1.5;">
-      <strong style="font-size:14px;">⚠️ Resend Sandbox Redirect</strong><br/>
-      This email was intended for <strong>${to}</strong>, but has been redirected to <strong>${authorizedEmail}</strong> because this Resend account is running in development/sandbox mode. To send to other recipients, please verify a domain at <a href="https://resend.com/domains" style="color:#B45309;font-weight:600;text-decoration:underline;">resend.com/domains</a>.
-    </div>
-          `;
-
-          // Insert warning banner right inside the card container above the header
-          let updatedHtml = html;
-          const containerStart = 'rgba(0,0,0,0.08);">';
-          if (html.includes(containerStart)) {
-            updatedHtml = html.replace(containerStart, `${containerStart}\n${warningBanner}`);
-          } else {
-            updatedHtml = warningBanner + html;
-          }
-
-          const retryResult = await resend.emails.send({
-            from: FROM,
-            to: [authorizedEmail],
-            subject: `[SANDBOX REDIRECT] Invoice ${invoiceNumber} to ${customerName}`,
-            html: updatedHtml,
-            attachments,
-          });
+          const retryResult = await executeSend(sandboxFrom, authorizedEmail, true);
 
           if (!retryResult.error) {
             return NextResponse.json({

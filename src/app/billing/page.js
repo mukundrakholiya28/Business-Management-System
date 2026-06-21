@@ -163,6 +163,11 @@ export default function BillingPage() {
   };
 
   const exportPDF = async (bill) => {
+    if (bill.pdf_url) {
+      window.open(`${bill.pdf_url}?t=${Date.now()}`, '_blank');
+      showToast("Opening PDF...");
+      return;
+    }
     const customer = customers.find((c) => c.id === bill.customer_id);
     const vehicle  = vehicles.find((v) => v.id === bill.vehicle_id);
     const items    = billItems.filter((i) => i.bill_id === bill.id);
@@ -179,66 +184,88 @@ export default function BillingPage() {
       return;
     }
 
-    let pdfUrl = null;
+    let pdfUrl = bill.pdf_url || null;
     let pdfBase64 = null;
     let pdfBlob = null;
 
-    try {
-      showToast("Generating invoice PDF...");
-      const pdf = await generateInvoicePDF({ bill, items, customer, vehicle });
-      if (pdf) {
-        pdfBlob = pdf.output("blob");
+    if (pdfUrl) {
+      try {
+        showToast("Fetching stored PDF...");
+        const response = await fetch(`${pdfUrl}?t=${Date.now()}`);
+        if (response.ok) {
+          pdfBlob = await response.blob();
+          pdfBase64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result.split(',')[1]);
+            reader.onerror = reject;
+            reader.readAsDataURL(pdfBlob);
+          });
+        }
+      } catch (fetchErr) {
+        console.warn("Could not fetch cached PDF, will regenerate:", fetchErr);
+        pdfUrl = null;
+      }
+    }
 
-        // Convert to base64 for email
-        pdfBase64 = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result.split(',')[1]);
-          reader.onerror = reject;
-          reader.readAsDataURL(pdfBlob);
-        });
+    if (!pdfUrl) {
+      try {
+        showToast("Generating invoice PDF...");
+        const pdf = await generateInvoicePDF({ bill, items, customer, vehicle });
+        if (pdf) {
+          pdfBlob = pdf.output("blob");
 
-        // Upload to Supabase Storage if supabase is ready
-        if (supabase) {
-          try {
-            // Get user ID
-            const { data: { user } } = await supabase.auth.getUser();
-            const userId = user?.id || "anonymous";
-            const filePath = `${userId}/INV-${bill.bill_number}.pdf`;
+          // Convert to base64 for email
+          pdfBase64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result.split(',')[1]);
+            reader.onerror = reject;
+            reader.readAsDataURL(pdfBlob);
+          });
 
-            // Try creating bucket in case it doesn't exist
-            await supabase.storage.createBucket('invoices', { public: true }).catch(() => {});
+          // Upload to Supabase Storage if supabase is ready
+          if (supabase) {
+            try {
+              // Get user ID
+              const { data: { user } } = await supabase.auth.getUser();
+              const userId = user?.id || "anonymous";
+              const filePath = `${userId}/INV-${bill.bill_number}.pdf`;
 
-            const { error: uploadError } = await supabase.storage
-              .from('invoices')
-              .upload(filePath, pdfBlob, {
-                contentType: 'application/pdf',
-                upsert: true,
-              });
+              // Try creating bucket in case it doesn't exist
+              await supabase.storage.createBucket('invoices', { public: true }).catch(() => {});
 
-            if (uploadError) {
-              if (uploadError.message?.includes("Bucket not found")) {
-                console.warn(
-                  "Supabase Storage bucket 'invoices' not found. " +
-                  "Please create the bucket in your Supabase dashboard or run the storage SQL schema. " +
-                  "Full error:", uploadError
-                );
-              } else {
-                console.error("Storage upload failed:", uploadError);
-              }
-            } else {
-              const { data: urlData } = supabase.storage
+              const { error: uploadError } = await supabase.storage
                 .from('invoices')
-                .getPublicUrl(filePath);
-              pdfUrl = urlData?.publicUrl;
+                .upload(filePath, pdfBlob, {
+                  contentType: 'application/pdf',
+                  upsert: true,
+                  cacheControl: '0',
+                });
+
+              if (uploadError) {
+                if (uploadError.message?.includes("Bucket not found")) {
+                  console.warn(
+                    "Supabase Storage bucket 'invoices' not found. " +
+                    "Please create the bucket in your Supabase dashboard or run the storage SQL schema. " +
+                    "Full error:", uploadError
+                  );
+                } else {
+                  console.error("Storage upload failed:", uploadError);
+                }
+              } else {
+                const { data: urlData } = supabase.storage
+                  .from('invoices')
+                  .getPublicUrl(filePath);
+                pdfUrl = urlData?.publicUrl;
+              }
+            } catch (storageErr) {
+              console.error("Storage upload error:", storageErr);
             }
-          } catch (storageErr) {
-            console.error("Storage upload error:", storageErr);
           }
         }
+      } catch (pdfErr) {
+        console.error("Failed to generate PDF:", pdfErr);
+        showToast("PDF generation failed, sending messages without PDF attachment...");
       }
-    } catch (pdfErr) {
-      console.error("Failed to generate PDF:", pdfErr);
-      showToast("PDF generation failed, sending messages without PDF attachment...");
     }
 
     let emailSent = null;
@@ -352,21 +379,109 @@ export default function BillingPage() {
 
   const handleSaveBill = async ({ bill, items, isEditing }) => {
     try {
-      const saved = await saveBillWithItems({ bill, items, isEditing });
-      const nextBill = saved.bill;
-      const nextItems = saved.items || [];
+      showToast(isEditing ? "Saving changes & updating PDF..." : "Saving invoice & generating PDF...");
+      
+      const customer = customers.find((c) => c.id === bill.customer_id);
+      const vehicle = vehicles.find((v) => v.id === bill.vehicle_id);
 
-      setBills((prev) =>
-        isEditing ? prev.map((item) => (item.id === nextBill.id ? nextBill : item)) : [nextBill, ...prev]
-      );
-      setBillItems((prev) => {
-        const remaining = isEditing ? prev.filter((item) => item.bill_id !== nextBill.id) : prev;
-        return [...remaining, ...nextItems];
-      });
-      setSelectedBill(nextBill);
+      let pdfUrl = bill.pdf_url || null;
+
+      if (isEditing) {
+        // Edit flow: generate PDF, upload it (overwriting old one), then save bill
+        try {
+          const pdf = await generateInvoicePDF({ bill, items, customer, vehicle });
+          if (pdf && supabase) {
+            const pdfBlob = pdf.output("blob");
+            const { data: { user } } = await supabase.auth.getUser();
+            const userId = user?.id || "anonymous";
+            const filePath = `${userId}/INV-${bill.bill_number}.pdf`;
+
+            await supabase.storage.createBucket('invoices', { public: true }).catch(() => {});
+            const { error: uploadError } = await supabase.storage
+              .from('invoices')
+              .upload(filePath, pdfBlob, {
+                contentType: 'application/pdf',
+                upsert: true,
+                cacheControl: '0',
+              });
+
+            if (uploadError) {
+              console.error("Storage upload failed on save:", uploadError);
+            } else {
+              const { data: urlData } = supabase.storage
+                .from('invoices')
+                .getPublicUrl(filePath);
+              pdfUrl = urlData?.publicUrl;
+              console.log("PDF uploaded/replaced successfully on save:", pdfUrl);
+            }
+          }
+        } catch (pdfErr) {
+          console.error("Auto PDF generation/upload failed on save:", pdfErr);
+        }
+
+        const billWithPdf = { ...bill, pdf_url: pdfUrl };
+        const saved = await saveBillWithItems({ bill: billWithPdf, items, isEditing });
+        const nextBill = saved.bill;
+        const nextItems = saved.items || [];
+
+        setBills((prev) => prev.map((item) => (item.id === nextBill.id ? nextBill : item)));
+        setBillItems((prev) => {
+          const remaining = prev.filter((item) => item.bill_id !== nextBill.id);
+          return [...remaining, ...nextItems];
+        });
+        setSelectedBill(nextBill);
+      } else {
+        // Create flow:
+        // 1. Save bill first without PDF to let DB generate serial bill_number
+        const saved = await saveBillWithItems({ bill, items, isEditing });
+        let nextBill = saved.bill;
+        const nextItems = saved.items || [];
+
+        // 2. Generate and upload PDF now that we have the valid bill_number
+        try {
+          const pdf = await generateInvoicePDF({ bill: nextBill, items: nextItems, customer, vehicle });
+          if (pdf && supabase) {
+            const pdfBlob = pdf.output("blob");
+            const { data: { user } } = await supabase.auth.getUser();
+            const userId = user?.id || "anonymous";
+            const filePath = `${userId}/INV-${nextBill.bill_number}.pdf`;
+
+            await supabase.storage.createBucket('invoices', { public: true }).catch(() => {});
+            const { error: uploadError } = await supabase.storage
+              .from('invoices')
+              .upload(filePath, pdfBlob, {
+                contentType: 'application/pdf',
+                upsert: true,
+                cacheControl: '0',
+              });
+
+            if (uploadError) {
+              console.error("Storage upload failed on save:", uploadError);
+            } else {
+              const { data: urlData } = supabase.storage
+                .from('invoices')
+                .getPublicUrl(filePath);
+              pdfUrl = urlData?.publicUrl;
+              console.log("PDF uploaded successfully on save:", pdfUrl);
+
+              // 3. Update the DB record with the pdf_url
+              const billWithPdf = { ...nextBill, pdf_url: pdfUrl };
+              const updatedSaved = await saveBillWithItems({ bill: billWithPdf, items: undefined, isEditing: true });
+              nextBill = updatedSaved.bill;
+            }
+          }
+        } catch (pdfErr) {
+          console.error("Auto PDF generation/upload failed on save:", pdfErr);
+        }
+
+        setBills((prev) => [nextBill, ...prev]);
+        setBillItems((prev) => [...prev, ...nextItems]);
+        setSelectedBill(nextBill);
+      }
+
       setShowBillForm(false);
       setEditingBill(null);
-      showToast(isEditing ? "Invoice updated" : "Invoice created");
+      showToast(isEditing ? "Invoice updated & PDF saved" : "Invoice created & PDF saved");
     } catch (error) {
       showToast(error.message);
     }

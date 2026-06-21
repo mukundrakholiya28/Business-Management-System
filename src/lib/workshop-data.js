@@ -204,6 +204,7 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
         status:         bill.status,
         payment_method: bill.payment_method || null,
         notes:          bill.notes,
+        pdf_url:        bill.pdf_url || null,
       })
       .eq("id", bill.id)
       .select("*");

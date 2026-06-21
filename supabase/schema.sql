@@ -195,3 +195,6 @@ INSERT INTO business_profile (
   'Ahmedabad, Gujarat', '+91 98765 43210', 'billing@shreeroyalcar.in', '',
   'UPI / Bank Transfer / Cash', '', '', '', '', 'Payment due within 7 days of invoice date.'
 ) ON CONFLICT DO NOTHING;
+
+-- Add pdf_url column to bills table (stored generated invoice PDFs)
+ALTER TABLE bills ADD COLUMN IF NOT EXISTS pdf_url TEXT;
