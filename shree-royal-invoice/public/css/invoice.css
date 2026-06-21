@@ -1,0 +1,314 @@
+/* =========================================================
+   SHREE ROYAL CAR — Invoice Stylesheet
+   Palette lifted directly from the circular logo:
+     - Mustard Yellow  : brand surface / accents
+     - Deep Navy       : text, lines, structure
+     - Warm Off-White  : page background
+   Flat, minimalist, no gradients, no shadows, no border-radius
+   bigger than 2px anywhere — this is a "stamped badge" aesthetic,
+   same family as the logo itself.
+   ========================================================= */
+
+:root {
+  --yellow:        #F4C518; /* logo background */
+  --yellow-soft:   #FCE9A8; /* tints / table stripes */
+  --navy:          #2B2A3D; /* logo text / ink */
+  --navy-soft:     #5A5A70; /* secondary text */
+  --paper:         #FAF8F2; /* page background */
+  --line:          #D8D2BE; /* hairline rules */
+  --white:         #FFFFFF;
+
+  /* ---- Type system ----
+     Brand wordmark  : Vortice (the typeface used on the logo for
+                       "SHREE ROYAL CAR"). Vortice is a commercial
+                       display font and is NOT bundled here for
+                       licensing reasons — see /public/fonts/README.
+                       If you own a license, drop the files in
+                       /public/fonts and the @font-face below will
+                       pick them up automatically. Until then it
+                       falls back to Oswald, a free condensed
+                       geometric face with a similar stamped, sporty
+                       character to Vortice.
+     Body / data     : Poppins — flat, geometric, minimalist,
+                       reads cleanly at small sizes for tabular data.
+  */
+  --font-brand: 'Vortice', 'Oswald', 'Archivo Black', sans-serif;
+  --font-body:  'Poppins', 'Helvetica Neue', Arial, sans-serif;
+}
+
+@font-face {
+  font-family: 'Vortice';
+  src: url('/fonts/Vortice-Bold.woff2') format('woff2'),
+       url('/fonts/Vortice-Bold.otf') format('opentype');
+  font-weight: 700;
+  font-display: swap;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--paper);
+  font-family: var(--font-body);
+  color: var(--navy);
+  -webkit-font-smoothing: antialiased;
+}
+
+.sheet {
+  max-width: 800px;
+  margin: 40px auto;
+  background: var(--white);
+  border: 2px solid var(--navy);
+  position: relative;
+}
+
+/* ---------- Header ---------- */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 36px 40px;
+  background: #000000;
+  border-bottom: 2px solid var(--navy);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.brand img {
+  width: 100px;
+  height: 100px;
+  display: block;
+}
+
+.brand-text .name {
+  font-family: var(--font-brand);
+  font-weight: 700;
+  font-size: 28px;
+  letter-spacing: 0.5px;
+  line-height: 1;
+  margin: 0;
+  text-transform: uppercase;
+  color: var(--white);
+}
+
+.brand-text .tagline {
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--white);
+  opacity: 0.75;
+  margin-top: 4px;
+}
+
+.brand-text .est {
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--white);
+  opacity: 0.6;
+  margin-top: 2px;
+}
+
+.header .invoice-tag {
+  text-align: right;
+}
+
+.invoice-tag .label {
+  font-family: var(--font-brand);
+  font-size: 22px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--white);
+}
+
+.invoice-tag .number {
+  font-size: 13px;
+  color: var(--white);
+  opacity: 0.8;
+  margin-top: 4px;
+}
+
+/* ---------- Meta strip ---------- */
+.meta-strip {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr;
+  border-bottom: 2px solid var(--navy);
+}
+
+.meta-block {
+  padding: 24px 40px;
+  border-right: 1px solid var(--line);
+}
+
+.meta-block:last-child { border-right: none; }
+
+.meta-block .eyebrow {
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--navy-soft);
+  margin-bottom: 8px;
+}
+
+.meta-block .value {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.meta-block .value strong {
+  display: block;
+  font-size: 15px;
+  margin-bottom: 2px;
+}
+
+.status-pill {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 4px 10px;
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-weight: 700;
+  border: 1.5px solid var(--navy);
+  color: var(--navy);
+  background: var(--yellow-soft);
+}
+
+/* ---------- Items table ---------- */
+.items {
+  padding: 32px 40px 8px;
+}
+
+table.items-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+table.items-table thead th {
+  text-align: left;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--white);
+  background: var(--navy);
+  padding: 10px 12px;
+}
+
+table.items-table thead th.num { text-align: right; }
+
+table.items-table tbody td {
+  padding: 12px 12px;
+  font-size: 13.5px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+table.items-table tbody td.num {
+  text-align: right;
+  white-space: nowrap;
+  font-feature-settings: "tnum";
+}
+
+table.items-table tbody tr:nth-child(even) {
+  background: #FBF9F1;
+}
+
+/* ---------- Totals ---------- */
+.totals-wrap {
+  display: flex;
+  justify-content: flex-end;
+  padding: 16px 40px 8px;
+}
+
+.totals {
+  width: 280px;
+}
+
+.totals .row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  font-size: 13.5px;
+}
+
+.totals .row.muted { color: var(--navy-soft); }
+
+.totals .row.grand {
+  margin-top: 8px;
+  padding: 12px 14px;
+  background: var(--yellow);
+  border: 2px solid var(--navy);
+  font-weight: 700;
+  font-size: 16px;
+}
+
+/* ---------- Payment / footer ---------- */
+.payment {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  padding: 28px 40px;
+  border-top: 2px solid var(--navy);
+}
+
+.payment .eyebrow {
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--navy-soft);
+  margin-bottom: 10px;
+}
+
+.payment .line {
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.payment .line span {
+  color: var(--navy-soft);
+  display: inline-block;
+  min-width: 90px;
+}
+
+.notes {
+  padding: 0 40px 32px;
+  font-size: 11.5px;
+  color: var(--navy-soft);
+  line-height: 1.6;
+  border-top: 1px dashed var(--line);
+  margin-top: 8px;
+  padding-top: 16px;
+}
+
+.footer-strip {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 40px;
+  background: var(--navy);
+  color: var(--yellow-soft);
+  font-size: 11px;
+  letter-spacing: 0.5px;
+}
+
+.footer-strip strong { color: var(--yellow); }
+
+/* ---------- Print ---------- */
+@media print {
+  body { background: var(--white); }
+  .sheet { margin: 0; border: none; max-width: 100%; }
+  .no-print { display: none !important; }
+}
+
+@media (max-width: 640px) {
+  .meta-strip { grid-template-columns: 1fr; }
+  .meta-block { border-right: none; border-bottom: 1px solid var(--line); }
+  .payment { grid-template-columns: 1fr; }
+  .header { flex-direction: column; align-items: flex-start; gap: 16px; }
+  .header .invoice-tag { text-align: left; }
+}

@@ -13,6 +13,7 @@ import {
 } from "@/lib/helpers";
 import { sendWhatsApp, formatWhatsAppDate } from "@/lib/whatsapp";
 import { sendInvoiceEmail } from "@/lib/email";
+import { exportInvoicePDF } from "@/lib/pdf";
 import {
   loadWorkshopData,
   saveBillWithItems,
@@ -164,363 +165,30 @@ export default function BillingPage() {
   };
 
   const exportPDF = async (bill) => {
-    const { default: jsPDF } = await import("jspdf");
-    const { default: autoTable } = await import("jspdf-autotable");
     const customer = customers.find((c) => c.id === bill.customer_id);
-    const vehicle = vehicles.find((v) => v.id === bill.vehicle_id);
-    const items = billItems.filter((i) => i.bill_id === bill.id);
-
-    const doc = new jsPDF();
-
-    // 1. Try to load custom Inter font for Rupee symbol support
-    let hasCustomFont = false;
-    try {
-      const response = await fetch("/Inter-Regular.ttf");
-      if (response.ok) {
-        const arrayBuffer = await response.arrayBuffer();
-        const bytes = new Uint8Array(arrayBuffer);
-        let binary = "";
-        const len = bytes.byteLength;
-        for (let i = 0; i < len; i++) {
-          binary += String.fromCharCode(bytes[i]);
-        }
-        const base64Font = window.btoa(binary);
-
-        doc.addFileToVFS("Inter-Regular.ttf", base64Font);
-        doc.addFont("Inter-Regular.ttf", "Inter", "normal");
-        doc.setFont("Inter", "normal");
-        hasCustomFont = true;
-      }
-    } catch (e) {
-      console.warn("Failed to load Inter font, falling back to Helvetica", e);
-    }
-
-    // Currency Formatter fallback
-    const fmt = (val) => {
-      const formatted = formatCurrency(val);
-      if (!hasCustomFont) {
-        return formatted.replace("₹", "Rs. ");
-      }
-      return formatted;
-    };
-
-    // 2. Load Logo Image
-    const loadLogo = () => {
-      return new Promise((resolve) => {
-        const img = new Image();
-        img.src = "/logo.png";
-        img.onload = () => resolve(img);
-        img.onerror = () => resolve(null);
-      });
-    };
-    const logoImg = await loadLogo();
-
-    // Page Background - Warm Off-White
-    doc.setFillColor(250, 248, 242);
-    doc.rect(0, 0, 210, 297, "F");
-
-    // Page Border - Deep Navy
-    doc.setDrawColor(43, 42, 61);
-    doc.setLineWidth(1);
-    doc.rect(15, 15, 180, 267, "D");
-
-    // 3. Render Header - Black Block
-    doc.setFillColor(0, 0, 0);
-    doc.rect(15, 15, 180, 28, "F");
-
-    if (logoImg) {
-      doc.addImage(logoImg, "PNG", 22, 19, 20, 20);
-      doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
-      doc.setFontSize(22);
-      doc.setTextColor(255, 255, 255); // White
-      doc.text("SHREE ROYAL CAR", 48, 26);
-      
-      doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
-      doc.setFontSize(8.5);
-      doc.setTextColor(220, 220, 220); // Light Grey
-      doc.text("AUTOMOTIVE REPAIR & CAR WASH", 48, 32);
-      
-      doc.setFontSize(7.5);
-      doc.setTextColor(180, 180, 180);
-      doc.text("EST. 2004", 48, 37);
-    } else {
-      doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
-      doc.setFontSize(24);
-      doc.setTextColor(255, 255, 255);
-      doc.text("SHREE ROYAL CAR", 24, 28);
-      
-      doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
-      doc.setFontSize(9);
-      doc.setTextColor(220, 220, 220);
-      doc.text("AUTOMOTIVE REPAIR & CAR WASH  |  EST. 2004", 24, 35);
-    }
-
-    // Invoice tag inside black header block
-    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
-    doc.setFontSize(16);
-    doc.setTextColor(255, 255, 255);
-    doc.text("INVOICE", 188, 27, { align: "right" });
-    
-    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
-    doc.setFontSize(9);
-    doc.setTextColor(220, 220, 220);
-    doc.text(`#INV-${bill.bill_number}`, 188, 33, { align: "right" });
-
-    // 4. Render Meta Strip (Company info / Bill-to / Invoice Details)
-    doc.setDrawColor(43, 42, 61);
-    doc.setLineWidth(0.5);
-    doc.line(15, 43, 195, 43);
-    doc.line(15, 78, 195, 78);
-    
-    // Vertical hairline dividers
-    doc.setDrawColor(216, 210, 190); // Line color
-    doc.line(88, 43, 88, 78);
-    doc.line(142, 43, 142, 78);
-
-    // Column 1: From (Company info)
-    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
-    doc.setFontSize(7.5);
-    doc.setTextColor(90, 90, 112); // Soft navy
-    doc.text("FROM", 20, 49);
-
-    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
-    doc.setFontSize(9);
-    doc.setTextColor(43, 42, 61); // Navy
-    doc.text("Shree Royal Car", 20, 54);
-
-    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
-    doc.setFontSize(8);
-    doc.text("12 Ashram Road, Navrangpura,", 20, 58);
-    doc.text("Ahmedabad, Gujarat 380009", 20, 62);
-    doc.text("+91 98765 43210 · billing@shreeroyalcar.in", 20, 66);
-    doc.text("GSTIN: 24ABCDE1234F1Z5", 20, 70);
-
-    // Column 2: Bill To
-    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
-    doc.setFontSize(7.5);
-    doc.setTextColor(90, 90, 112);
-    doc.text("BILL TO", 93, 49);
-
-    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
-    doc.setFontSize(9);
-    doc.setTextColor(43, 42, 61);
-    doc.text(customer?.name || "—", 93, 54);
-
-    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
-    doc.setFontSize(8);
-    doc.text(customer?.address || "No address on record", 93, 58);
-    doc.text(`Phone: ${customer?.phone_number || "—"}`, 93, 62);
-    doc.text(`Vehicle: ${vehicle?.vehicle_number ? formatVehicleNumber(vehicle.vehicle_number) : "—"}`, 93, 66);
-    doc.text(`${vehicle?.make || ""} ${vehicle?.model || ""}`, 93, 70);
-
-    // Column 3: Invoice Details & Status
-    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
-    doc.setFontSize(7.5);
-    doc.setTextColor(90, 90, 112);
-    doc.text("DETAILS", 147, 49);
-
-    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
-    doc.setFontSize(8);
-    doc.setTextColor(43, 42, 61);
-    doc.text(`Date: ${formatDate(bill.created_at)}`, 147, 54);
-    const dueDateObj = new Date(new Date(bill.created_at).getTime() + 7 * 24 * 60 * 60 * 1000);
-    doc.text(`Due: ${formatDate(dueDateObj.toISOString())}`, 147, 59);
-
-    // Status pill
-    doc.setFillColor(252, 233, 168); // Soft yellow
-    doc.setDrawColor(43, 42, 61);
-    doc.setLineWidth(0.7);
-    doc.rect(147, 63, 24, 6, "FD");
-    
-    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
-    doc.setFontSize(7.5);
-    doc.setTextColor(43, 42, 61);
-    doc.text(bill.status.toUpperCase(), 159, 67.2, { align: "center" });
-
-    // 5. Render Line Items Table
-    autoTable(doc, {
-      startY: 85,
-      head: [["Description", "Qty", "Rate", "Amount"]],
-      body: items.map((item) => [
-        item.description,
-        item.quantity,
-        fmt(item.unit_price),
-        fmt(item.total_price),
-      ]),
-      theme: "plain",
-      headStyles: {
-        font: hasCustomFont ? "Inter" : "helvetica",
-        fontStyle: "bold",
-        fillColor: [43, 42, 61], // Deep navy background
-        textColor: 255,
-        fontSize: 8.5,
-        cellPadding: 4
-      },
-      styles: {
-        font: hasCustomFont ? "Inter" : "helvetica",
-        fontSize: 8.5,
-        cellPadding: 5,
-        textColor: [43, 42, 61],
-        lineColor: [216, 210, 190], // Hairline border
-        lineWidth: 0.2
-      },
-      columnStyles: {
-        1: { halign: "right", cellWidth: 15 },
-        2: { halign: "right", cellWidth: 35 },
-        3: { halign: "right", cellWidth: 35 }
-      },
-      alternateRowStyles: { fillColor: [251, 249, 241] }, // Warm alternating row color
-    });
-
-    // 6. Render Totals Block
-    const y = doc.lastAutoTable.finalY + 8;
-    const totalsWidth = 75;
-    const totalsStartX = 120;
-
-    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
-    doc.setFontSize(8.5);
-    doc.setTextColor(90, 90, 112); // Soft navy
-    
-    doc.text("Subtotal", totalsStartX, y);
-    doc.text(fmt(bill.subtotal), 190, y, { align: "right" });
-    
-    let totalOffsetY = y;
-    if (bill.tax_amount > 0) {
-      totalOffsetY += 6;
-      doc.text(`GST (${bill.gst_rate ?? 18}%)`, totalsStartX, totalOffsetY);
-      doc.text(fmt(bill.tax_amount), 190, totalOffsetY, { align: "right" });
-    }
-    
-    if (bill.discount > 0) {
-      totalOffsetY += 6;
-      doc.text("Discount", totalsStartX, totalOffsetY);
-      doc.text(`-${fmt(bill.discount)}`, 190, totalOffsetY, { align: "right" });
-    }
-
-    // Grand Total Row - Mustard Yellow Background
-    totalOffsetY += 3;
-    doc.setFillColor(244, 197, 24); // Mustard yellow
-    doc.setDrawColor(43, 42, 61);
-    doc.setLineWidth(1);
-    doc.rect(totalsStartX, totalOffsetY, totalsWidth, 10, "FD");
-
-    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
-    doc.setFontSize(9.5);
-    doc.setTextColor(43, 42, 61);
-    doc.text("Total Due", totalsStartX + 4, totalOffsetY + 6.5);
-    doc.text(fmt(bill.total_amount), 190, totalOffsetY + 6.5, { align: "right" });
-
-    // 7. Render Payment Details Block
-    let paymentY = Math.max(doc.lastAutoTable.finalY + 12, totalOffsetY + 16);
-    
-    if (paymentY > 230) {
-      doc.addPage();
-      // Reset background and borders for page 2
-      doc.setFillColor(250, 248, 242);
-      doc.rect(0, 0, 210, 297, "F");
-      doc.setDrawColor(43, 42, 61);
-      doc.setLineWidth(1);
-      doc.rect(15, 15, 180, 267, "D");
-      paymentY = 25;
-    }
-
-    doc.setDrawColor(43, 42, 61);
-    doc.setLineWidth(0.5);
-    doc.line(15, paymentY, 195, paymentY);
-
-    // Left Column: Payment Methods
-    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
-    doc.setFontSize(7.5);
-    doc.setTextColor(90, 90, 112); // Soft navy
-    doc.text("PAYMENT METHODS", 20, paymentY + 7);
-
-    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
-    doc.setFontSize(8.5);
-    doc.setTextColor(43, 42, 61); // Navy
-    doc.text("Accepted via:", 20, paymentY + 13);
-    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
-    doc.text(bill.payment_method === "online" ? "UPI / Bank Transfer" : "Cash", 45, paymentY + 13);
-
-    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
-    doc.text("UPI ID:", 20, paymentY + 18);
-    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
-    doc.text("shreeroyalcar@upi", 45, paymentY + 18);
-
-    // Right Column: Bank Transfer
-    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
-    doc.setFontSize(7.5);
-    doc.setTextColor(90, 90, 112);
-    doc.text("BANK TRANSFER", 110, paymentY + 7);
-
-    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
-    doc.setFontSize(8.5);
-    doc.setTextColor(43, 42, 61);
-    doc.text("Bank:", 110, paymentY + 13);
-    doc.text("HDFC Bank, Navrangpura Branch", 132, paymentY + 13);
-
-    doc.text("Account No:", 110, paymentY + 18);
-    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
-    doc.text("50100123456789", 132, paymentY + 18);
-
-    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
-    doc.text("IFSC:", 110, paymentY + 23);
-    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
-    doc.text("HDFC0001234", 132, paymentY + 23);
-
-    // 8. Notes / Remarks (if present)
-    let notesY = paymentY + 30;
-    if (bill.notes && bill.notes.trim()) {
-      doc.setDrawColor(216, 210, 190); // Line/Border
-      doc.setLineWidth(0.5);
-      doc.line(20, notesY, 190, notesY);
-      
-      doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
-      doc.setFontSize(8);
-      doc.setTextColor(90, 90, 112);
-      const splitNotes = doc.splitTextToSize(bill.notes, 170);
-      doc.text(splitNotes, 20, notesY + 5);
-    }
-
-    // 9. Footer banner
-    doc.setFillColor(43, 42, 61); // Navy
-    doc.rect(15, 271, 180, 11, "F");
-
-    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "bold");
-    doc.setFontSize(8);
-    doc.setTextColor(244, 197, 24); // Mustard yellow
-    doc.text("Thank you for trusting SHREE ROYAL CAR", 20, 278);
-
-    doc.setFont(hasCustomFont ? "Inter" : "helvetica", "normal");
-    doc.setFontSize(8);
-    doc.setTextColor(252, 233, 168); // Soft yellow
-    doc.text("+91 98765 43210  |  billing@shreeroyalcar.in", 190, 278, { align: "right" });
-
-    doc.save(`INV-${bill.bill_number}.pdf`);
-    showToast("PDF downloaded");
+    const vehicle  = vehicles.find((v) => v.id === bill.vehicle_id);
+    const items    = billItems.filter((i) => i.bill_id === bill.id);
+    await exportInvoicePDF({ bill, items, customer, vehicle }, showToast);
   };
 
   const sendToCustomer = async (bill) => {
     const customer = customers.find((c) => c.id === bill.customer_id);
     const vehicle  = vehicles.find((v) => v.id === bill.vehicle_id);
     const items    = billItems.filter((i) => i.bill_id === bill.id);
-    
-    let emailStatus = { success: false, error: null, attempted: false };
-    let whatsappStatus = { success: false, error: null, attempted: false };
+    const results  = [];
 
     // Send email if customer has an email address
     if (customer?.email) {
-      emailStatus.attempted = true;
       try {
         await sendInvoiceEmail({ bill, items, customer, vehicle });
-        emailStatus.success = true;
+        results.push("email");
       } catch (err) {
-        emailStatus.error = err.message || "Unknown error";
+        showToast(`Email failed: ${err.message}`);
       }
     }
 
     // Send WhatsApp
     if (customer?.phone_number) {
-      whatsappStatus.attempted = true;
       try {
         await sendWhatsApp(
           customer.phone_number,
@@ -528,40 +196,16 @@ export default function BillingPage() {
           `INV-${bill.bill_number}`,
           formatWhatsAppDate(bill.created_at)
         );
-        whatsappStatus.success = true;
+        results.push("WhatsApp");
       } catch (err) {
-        whatsappStatus.error = err.message || "Unknown error";
+        showToast(`WhatsApp failed: ${err.message}`);
       }
     }
 
-    // Consolidated status messaging and fallbacks
-    if (!emailStatus.attempted && !whatsappStatus.attempted) {
+    if (results.length) {
+      showToast(`Invoice sent via ${results.join(" & ")} to ${customer?.name}`);
+    } else if (!customer?.email && !customer?.phone_number) {
       showToast("No email or phone on file for this customer.");
-      return;
-    }
-
-    if (emailStatus.attempted && whatsappStatus.attempted) {
-      if (emailStatus.success && whatsappStatus.success) {
-        showToast(`Invoice sent via Email & WhatsApp to ${customer.name}`);
-      } else if (emailStatus.success && !whatsappStatus.success) {
-        showToast(`Sent via Email, but WhatsApp failed (Fallback: Email OK)`);
-      } else if (!emailStatus.success && whatsappStatus.success) {
-        showToast(`Sent via WhatsApp, but Email failed (Fallback: WhatsApp OK)`);
-      } else {
-        showToast(`Delivery failed! Email & WhatsApp both failed.`);
-      }
-    } else if (emailStatus.attempted) {
-      if (emailStatus.success) {
-        showToast(`Invoice sent via Email to ${customer.name}`);
-      } else {
-        showToast(`Email failed: ${emailStatus.error}. No phone for WhatsApp fallback.`);
-      }
-    } else if (whatsappStatus.attempted) {
-      if (whatsappStatus.success) {
-        showToast(`Invoice sent via WhatsApp to ${customer.name}`);
-      } else {
-        showToast(`WhatsApp failed: ${whatsappStatus.error}. No email for Email fallback.`);
-      }
     }
   };
 
@@ -619,77 +263,7 @@ export default function BillingPage() {
       setSelectedBill(nextBill);
       setShowBillForm(false);
       setEditingBill(null);
-
-      if (isEditing) {
-        showToast("Invoice updated");
-        return;
-      }
-
-      if (nextBill.status === "draft") {
-        showToast("Invoice created as draft");
-        return;
-      }
-
-      // Automatically send notifications for new invoices
-      const customer = customers.find((c) => c.id === nextBill.customer_id);
-      const vehicle = vehicles.find((v) => v.id === nextBill.vehicle_id);
-
-      let emailStatus = { success: false, error: null, attempted: false };
-      let whatsappStatus = { success: false, error: null, attempted: false };
-
-      // Try WhatsApp first
-      if (customer?.phone_number) {
-        whatsappStatus.attempted = true;
-        try {
-          await sendWhatsApp(
-            customer.phone_number,
-            customer.name,
-            `INV-${nextBill.bill_number}`,
-            formatWhatsAppDate(nextBill.created_at)
-          );
-          whatsappStatus.success = true;
-        } catch (whatsappErr) {
-          whatsappStatus.error = whatsappErr.message || "Unknown error";
-        }
-      }
-
-      // Try Email
-      if (customer?.email) {
-        emailStatus.attempted = true;
-        try {
-          await sendInvoiceEmail({ bill: nextBill, items: nextItems, customer, vehicle });
-          emailStatus.success = true;
-        } catch (emailErr) {
-          emailStatus.error = emailErr.message || "Unknown error";
-        }
-      }
-
-      // Formulate consolidated response toast
-      if (!emailStatus.attempted && !whatsappStatus.attempted) {
-        showToast("Invoice created. No contact info on file to send.");
-      } else if (emailStatus.attempted && whatsappStatus.attempted) {
-        if (emailStatus.success && whatsappStatus.success) {
-          showToast("Invoice created & sent via Email & WhatsApp!");
-        } else if (emailStatus.success && !whatsappStatus.success) {
-          showToast("Invoice created. Sent via Email, but WhatsApp failed.");
-        } else if (!emailStatus.success && whatsappStatus.success) {
-          showToast("Invoice created. Sent via WhatsApp, but Email failed.");
-        } else {
-          showToast("Invoice created, but Email & WhatsApp delivery failed.");
-        }
-      } else if (emailStatus.attempted) {
-        if (emailStatus.success) {
-          showToast("Invoice created & sent via Email!");
-        } else {
-          showToast(`Invoice created, but Email failed: ${emailStatus.error}`);
-        }
-      } else if (whatsappStatus.attempted) {
-        if (whatsappStatus.success) {
-          showToast("Invoice created & sent via WhatsApp!");
-        } else {
-          showToast(`Invoice created, but WhatsApp failed: ${whatsappStatus.error}`);
-        }
-      }
+      showToast(isEditing ? "Invoice updated" : "Invoice created");
     } catch (error) {
       showToast(error.message);
     }
@@ -1216,6 +790,21 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, onClose,
     const savedBill = buildBill(finalStatus);
     const savedItems = buildItems(savedBill.id);
 
+    // Send WhatsApp for all new invoices where customer has a phone
+    if (!isEditing) {
+      const customer = customers.find((c) => c.id === customerId);
+      if (customer?.phone_number) {
+        sendWhatsApp(
+          customer.phone_number,
+          customer.name,
+          `INV-${savedBill.bill_number}`,
+          formatWhatsAppDate(savedBill.created_at)
+        ).catch((err) => {
+          console.error("[WhatsApp send failed]", err.message);
+        });
+      }
+    }
+
     onSave({ bill: savedBill, items: savedItems, isEditing });
   };
 
@@ -1367,7 +956,7 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, onClose,
                     value={item.quantity}
                     min="1"
                     onChange={(e) => updateItem(index, "quantity", Number(e.target.value))}
-                    className="flat-input w-20 shrink-0"
+                    className="flat-input flex-1 sm:w-20"
                   />
                   <input
                     type="number"
@@ -1375,7 +964,7 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, onClose,
                     value={item.unit_price || ""}
                     min="0"
                     onChange={(e) => updateItem(index, "unit_price", Number(e.target.value))}
-                    className="flat-input flex-grow sm:w-28"
+                    className="flat-input flex-2 sm:w-28"
                   />
                   <div className="flex items-center gap-2 shrink-0 min-w-[80px] justify-end">
                     <span className="text-sm font-semibold text-gray-700 tabular-nums">

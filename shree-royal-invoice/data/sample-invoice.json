@@ -1,0 +1,71 @@
+{
+  "company": {
+    "name": "Shree Royal Car",
+    "tagline": "Automotive Repair & Car Wash",
+    "established": "2004",
+    "address": "12 Ashram Road, Navrangpura, Ahmedabad, Gujarat 380009",
+    "phone": "+91 98765 43210",
+    "email": "billing@shreeroyalcar.in",
+    "gstin": "24ABCDE1234F1Z5",
+    "logo": "/images/logo.png"
+  },
+  "invoice": {
+    "number": "SRC-2026-0142",
+    "date": "21 June 2026",
+    "dueDate": "28 June 2026",
+    "status": "Due"
+  },
+  "billTo": {
+    "name": "Rohan Mehta",
+    "address": "402 Sapphire Heights, Satellite Road, Ahmedabad, Gujarat 380015",
+    "phone": "+91 90000 12345",
+    "vehicle": "Maruti Suzuki Swift · GJ-01-AB-4521"
+  },
+  "items": [
+    {
+      "description": "Full Synthetic Engine Oil Change",
+      "qty": 1,
+      "rate": 2200,
+      "amount": 2200
+    },
+    {
+      "description": "Brake Pad Replacement (Front Set)",
+      "qty": 1,
+      "rate": 3500,
+      "amount": 3500
+    },
+    {
+      "description": "Premium Foam Wash & Interior Vacuum",
+      "qty": 1,
+      "rate": 899,
+      "amount": 899
+    },
+    {
+      "description": "Wheel Alignment & Balancing",
+      "qty": 4,
+      "rate": 250,
+      "amount": 1000
+    },
+    {
+      "description": "Air Filter Replacement",
+      "qty": 1,
+      "rate": 650,
+      "amount": 650
+    }
+  ],
+  "charges": {
+    "subtotal": 8249,
+    "discount": 249,
+    "taxRate": 18,
+    "taxAmount": 1440,
+    "total": 9440
+  },
+  "payment": {
+    "method": "UPI / Bank Transfer / Cash",
+    "upiId": "shreeroyalcar@upi",
+    "bankName": "HDFC Bank, Navrangpura Branch",
+    "accountNumber": "50100123456789",
+    "ifsc": "HDFC0001234",
+    "notes": "Payment due within 7 days of invoice date. Late payments may attract a 2% monthly surcharge."
+  }
+}
