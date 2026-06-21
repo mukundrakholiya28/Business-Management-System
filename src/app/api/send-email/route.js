@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
-import { Resend } from "resend";
+import nodemailer from "nodemailer";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-const FROM   = process.env.RESEND_FROM_EMAIL || "Shree Royal Car <onboarding@resend.dev>";
+const SMTP_HOST   = process.env.SMTP_HOST || "smtp.resend.com";
+const SMTP_PORT   = parseInt(process.env.SMTP_PORT || "465", 10);
+const SMTP_USER   = process.env.SMTP_USER || "resend";
+const SMTP_PASS   = process.env.SMTP_PASS || process.env.RESEND_API_KEY || "";
+const SMTP_SECURE = process.env.SMTP_SECURE === "true" || SMTP_PORT === 465;
+const FROM        = process.env.SMTP_FROM || process.env.RESEND_FROM_EMAIL || "Shree Royal Car <onboarding@resend.dev>";
 
 /**
  * POST /api/send-email
@@ -37,8 +41,8 @@ export async function POST(request) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    if (!process.env.RESEND_API_KEY) {
-      return NextResponse.json({ error: "RESEND_API_KEY not configured in .env" }, { status: 503 });
+    if (!SMTP_PASS) {
+      return NextResponse.json({ error: "SMTP credentials or RESEND_API_KEY not configured in .env" }, { status: 503 });
     }
 
     const statusColor = {
@@ -180,13 +184,25 @@ export async function POST(request) {
       }
 
       try {
-        return await resend.emails.send({
+        const transporter = nodemailer.createTransport({
+          host: SMTP_HOST,
+          port: SMTP_PORT,
+          secure: SMTP_SECURE,
+          auth: {
+            user: SMTP_USER,
+            pass: SMTP_PASS,
+          },
+        });
+
+        const info = await transporter.sendMail({
           from: fromAddress,
-          to: [toAddress],
+          to: toAddress,
           subject: finalSubject,
           html: finalHtml,
           attachments,
         });
+
+        return { data: { id: info.messageId } };
       } catch (err) {
         return { error: err };
       }
