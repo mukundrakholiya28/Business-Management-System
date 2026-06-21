@@ -13,18 +13,19 @@ export function sendWhatsApp(phoneNumber, customerName, invoiceNumber, totalAmou
   const cleanPhone = phoneNumber.replace(/\D/g, '');
   
   // Construct the message
-  let message = `Hello ${customerName},\n\n`;
-  message += `Thank you for choosing *Shree Royal Car*! 🚗\n\n`;
-  message += `Your invoice *${invoiceNumber}* has been generated.\n`;
-  message += `*Total Amount: ${totalAmount}*\n\n`;
+  let message = `*Hello ${customerName},* 👋\n\n`;
+  message += `Thank you for choosing *Shree Royal Car*! We hope you had a great experience with our vehicle services. 🚗✨\n\n`;
+  message += `Your invoice has been successfully generated:\n`;
+  message += `• *Invoice No:* ${invoiceNumber}\n`;
+  message += `• *Total Amount:* ${totalAmount}\n\n`;
   
   if (invoicePdfUrl) {
-    message += `📄 Download Invoice: ${invoicePdfUrl}\n\n`;
+    message += `📄 View & Download PDF Invoice:\n${invoicePdfUrl}\n\n`;
   }
   
-  message += `For any queries, feel free to contact us.\n\n`;
+  message += `We value your trust in us and look forward to serving you again. If you have any questions or feedback, please feel free to reach out. 🛠️🤝\n\n`;
   message += `Best regards,\n`;
-  message += `Shree Royal Car Team`;
+  message += `*Shree Royal Car Team*`;
   
   // Encode message for URL
   const encodedMessage = encodeURIComponent(message);

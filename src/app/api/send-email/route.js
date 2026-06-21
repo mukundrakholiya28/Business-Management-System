@@ -89,8 +89,19 @@ export async function POST(request) {
       </div>
     </div>
 
+    <!-- Friendly Greeting -->
+    <div style="padding:32px 32px 16px; font-family:'Inter',system-ui,sans-serif; background-color:#ffffff;">
+      <h2 style="margin:0 0 12px; font-size:18px; font-weight:700; color:#111827;">Hello ${customerName},</h2>
+      <p style="margin:0 0 12px; font-size:14px; color:#4B5563; line-height:1.6;">
+        Thank you for trusting <strong>Shree Royal Car</strong> with your vehicle! We appreciate your business and hope you had a great experience with our service.
+      </p>
+      <p style="margin:0; font-size:14px; color:#4B5563; line-height:1.6;">
+        Your invoice <strong>${invoiceNumber}</strong> has been generated. The details of the service charges are listed below, and the official PDF receipt is attached to this email for your records.
+      </p>
+    </div>
+
     <!-- Invoice Meta -->
-    <div style="padding:28px 32px 0;">
+    <div style="padding:16px 32px 0;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;">
         <div>
           <p style="margin:0;font-size:22px;font-weight:700;color:#111827;">${invoiceNumber}</p>

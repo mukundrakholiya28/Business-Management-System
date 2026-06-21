@@ -286,7 +286,7 @@ export default function BillingPage() {
             await navigator.share({
               files: [pdfFile],
               title: `Invoice INV-${bill.bill_number}`,
-              text: `Hello ${customer.name},\n\nThank you for choosing Shree Royal Car! Your invoice INV-${bill.bill_number} has been generated.\nTotal Amount: ${formatCurrency(bill.total_amount)}\n\nBest regards,\nShree Royal Car Team`,
+              text: `Hello ${customer.name}, 👋\n\nThank you for choosing Shree Royal Car! We hope you had a great experience with our vehicle services. 🚗✨\n\nYour invoice INV-${bill.bill_number} has been generated:\n• Total Amount: ${formatCurrency(bill.total_amount)}\n\nBest regards,\nShree Royal Car Team`,
             });
             sharedNatively = true;
             if (emailSent) {
@@ -766,7 +766,8 @@ function BillDetailModal({ bill, items, customers, vehicles, onClose, onExportPD
         customer?.phone_number,
         customer?.name,
         `INV-${bill.bill_number}`,
-        formatCurrency(bill.total_amount)
+        formatCurrency(bill.total_amount),
+        bill.pdf_url
       );
       setSending(false);
     } catch (err) {
