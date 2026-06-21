@@ -127,5 +127,18 @@ CREATE POLICY "Allow users to delete their own invoices" ON storage.objects
     AND (storage.foldername(name))[1] = auth.uid()::text
   );
 
+-- Policy to allow authenticated users to update/overwrite their own invoices (required for upsert)
+CREATE POLICY "Allow authenticated updates" ON storage.objects
+  FOR UPDATE
+  TO authenticated
+  USING (
+    bucket_id = 'invoices' 
+    AND (storage.foldername(name))[1] = auth.uid()::text
+  )
+  WITH CHECK (
+    bucket_id = 'invoices' 
+    AND (storage.foldername(name))[1] = auth.uid()::text
+  );
+
 -- ── 8. Add pdf_url to bills table ────────────────────────────
 ALTER TABLE bills ADD COLUMN IF NOT EXISTS pdf_url TEXT;

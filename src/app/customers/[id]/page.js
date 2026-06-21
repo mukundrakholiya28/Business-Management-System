@@ -78,15 +78,66 @@ export default function CustomerDetailPage() {
   const pendingAmt  = bills.filter((b) => b.status === "pending").reduce((s, b) => s + b.total_amount, 0);
 
   const exportPDF = async (bill) => {
-    if (bill.pdf_url) {
-      window.open(`${bill.pdf_url}?t=${Date.now()}`, '_blank');
+    let pdfUrl = bill.pdf_url || null;
+
+    if (pdfUrl) {
+      window.open(`${pdfUrl}?t=${Date.now()}`, '_blank');
       showToast("Opening PDF...");
       return;
     }
+
     const cust    = allCustomers.find((c) => c.id === bill.customer_id);
     const vehicle = allVehicles.find((v) => v.id === bill.vehicle_id);
     const items   = billItems.filter((i) => i.bill_id === bill.id);
-    await exportInvoicePDF({ bill, items, customer: cust, vehicle }, showToast);
+
+    try {
+      showToast("Generating & storing invoice PDF...");
+      const pdf = await generateInvoicePDF({ bill, items, customer: cust, vehicle });
+      if (pdf) {
+        const pdfBlob = pdf.output("blob");
+
+        if (supabase) {
+          try {
+            const { data: { user } } = await supabase.auth.getUser();
+            const userId = user?.id || "anonymous";
+            const filePath = `${userId}/INV-${bill.bill_number}.pdf`;
+
+            await supabase.storage.createBucket('invoices', { public: true }).catch(() => {});
+            const { error: uploadError } = await supabase.storage
+              .from('invoices')
+              .upload(filePath, pdfBlob, {
+                contentType: 'application/pdf',
+                upsert: true,
+                cacheControl: '0',
+              });
+
+            if (uploadError) {
+              console.error("Storage upload failed on download fallback:", uploadError);
+            } else {
+              const { data: urlData } = supabase.storage
+                .from('invoices')
+                .getPublicUrl(filePath);
+              pdfUrl = urlData?.publicUrl;
+
+              // Save the pdf_url to the DB so it's cached for future use
+              const billWithPdf = { ...bill, pdf_url: pdfUrl };
+              const saved = await saveBillWithItems({ bill: billWithPdf, items: undefined, isEditing: true });
+              
+              // Update local state
+              setBills((prev) => prev.map((b) => (b.id === bill.id ? saved.bill : b)));
+            }
+          } catch (storageErr) {
+            console.error("Storage upload error on download fallback:", storageErr);
+          }
+        }
+
+        // Trigger local download/open
+        await exportInvoicePDF({ bill, items, customer: cust, vehicle }, showToast);
+      }
+    } catch (err) {
+      console.error("Failed to generate PDF on download fallback:", err);
+      showToast("Failed to generate PDF.");
+    }
   };
 
   const handleSaveBill = async ({ bill, items, isEditing }) => {
@@ -269,88 +320,30 @@ export default function CustomerDetailPage() {
     const vehicle = vehicles.find((v) => v.id === bill.vehicle_id);
     const items = billItems.filter((i) => i.bill_id === bill.id);
 
-    let pdfUrl = bill.pdf_url || null;
+    const pdfUrl = bill.pdf_url || null;
     let pdfBase64 = null;
     let pdfBlob = null;
 
-    if (pdfUrl) {
-      try {
-        showToast("Fetching stored PDF...");
-        const response = await fetch(`${pdfUrl}?t=${Date.now()}`);
-        if (response.ok) {
-          pdfBlob = await response.blob();
-          pdfBase64 = await new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result.split(',')[1]);
-            reader.onerror = reject;
-            reader.readAsDataURL(pdfBlob);
-          });
-        }
-      } catch (fetchErr) {
-        console.warn("Could not fetch cached PDF, will regenerate:", fetchErr);
-        pdfUrl = null;
-      }
+    if (!pdfUrl) {
+      showToast("No stored PDF found. Please save the invoice to generate it.");
+      return;
     }
 
-    if (!pdfUrl) {
-      try {
-        showToast("Generating invoice PDF...");
-        const pdf = await generateInvoicePDF({ bill, items, customer, vehicle });
-        if (pdf) {
-          pdfBlob = pdf.output("blob");
-
-          // Convert to base64 for email
-          pdfBase64 = await new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result.split(',')[1]);
-            reader.onerror = reject;
-            reader.readAsDataURL(pdfBlob);
-          });
-
-          // Upload to Supabase Storage if supabase is ready
-          if (supabase) {
-            try {
-              // Get user ID
-              const { data: { user } } = await supabase.auth.getUser();
-              const userId = user?.id || "anonymous";
-              const filePath = `${userId}/INV-${bill.bill_number}.pdf`;
-
-              // Try creating bucket in case it doesn't exist
-              await supabase.storage.createBucket('invoices', { public: true }).catch(() => {});
-
-              const { error: uploadError } = await supabase.storage
-                .from('invoices')
-                .upload(filePath, pdfBlob, {
-                  contentType: 'application/pdf',
-                  upsert: true,
-                  cacheControl: '0',
-                });
-
-              if (uploadError) {
-                if (uploadError.message?.includes("Bucket not found")) {
-                  console.warn(
-                    "Supabase Storage bucket 'invoices' not found. " +
-                    "Please create the bucket in your Supabase dashboard or run the storage SQL schema. " +
-                    "Full error:", uploadError
-                  );
-                } else {
-                  console.error("Storage upload failed:", uploadError);
-                }
-              } else {
-                const { data: urlData } = supabase.storage
-                  .from('invoices')
-                  .getPublicUrl(filePath);
-                pdfUrl = urlData?.publicUrl;
-              }
-            } catch (storageErr) {
-              console.error("Storage upload error:", storageErr);
-            }
-          }
-        }
-      } catch (pdfErr) {
-        console.error("Failed to generate PDF:", pdfErr);
-        showToast("PDF generation failed, sending messages without PDF attachment...");
-      }
+    try {
+      showToast("Fetching stored PDF...");
+      const response = await fetch(`${pdfUrl}?t=${Date.now()}`);
+      if (!response.ok) throw new Error("Failed to fetch PDF from server.");
+      pdfBlob = await response.blob();
+      pdfBase64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(pdfBlob);
+      });
+    } catch (fetchErr) {
+      console.error("Could not fetch cached PDF:", fetchErr);
+      showToast("Failed to retrieve invoice PDF. Please save it again.");
+      return;
     }
 
     let emailSent = null;
@@ -413,7 +406,7 @@ export default function CustomerDetailPage() {
           customer.name,
           `INV-${bill.bill_number}`,
           formatCurrency(bill.total_amount),
-          pdfUrl
+          pdfUrl // Pass the public storage URL so the customer can open the PDF link
         );
 
         if (emailSent) {
@@ -741,7 +734,6 @@ export default function CustomerDetailPage() {
         />
       )}
 
-      {/* Create / edit bill modal */}
       {showBillForm && (
         <CreateBillModal
           key={editingBill?.id || "new"}
@@ -750,13 +742,13 @@ export default function CustomerDetailPage() {
           bills={bills}
           bill={editingBill}
           billItems={billItems.filter((i) => i.bill_id === editingBill?.id)}
+          allBillItems={billItems}
           presetCustomerId={id}
           presetVehicleId={showBillForm?.vehicleId || editingBill?.vehicle_id || null}
           onClose={() => { setShowBillForm(false); setEditingBill(null); }}
           onSave={handleSaveBill}
         />
       )}
-
       {toast && (
         <div className="fixed bottom-5 right-5 z-50 bg-gray-900 text-white rounded-xl shadow-dropdown px-4 py-2.5 text-sm font-medium animate-slide-in">
           {toast}
@@ -949,7 +941,7 @@ function BillDetailModal({ bill, items, customer, vehicle, onClose, onExportPDF,
 }
 
 // ── Create / edit bill modal ───────────────────────────────────
-function CreateBillModal({ customers, vehicles, bills, bill, billItems, presetCustomerId, presetVehicleId, onClose, onSave }) {
+function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillItems, presetCustomerId, presetVehicleId, onClose, onSave }) {
   const isEditing  = Boolean(bill);
   const [customerId, setCustomerId] = useState(bill?.customer_id || presetCustomerId || "");
   const [vehicleId, setVehicleId]   = useState(bill?.vehicle_id  || presetVehicleId  || "");
@@ -969,6 +961,52 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, presetCu
   const addItem    = () => setItems((p) => [...p, { description: "", quantity: 1, unit_price: 0 }]);
   const removeItem = (i) => setItems((p) => p.filter((_, idx) => idx !== i));
   const updateItem = (i, f, v) => setItems((p) => p.map((it, idx) => idx === i ? { ...it, [f]: v } : it));
+
+  const baseServices = [
+    "Full Body Wash & Vacuum",
+    "Engine Oil Change",
+    "Oil Filter Replacement",
+    "Brake Pad Replacement",
+    "AC Gas Charging & Service",
+    "Wheel Alignment & Balancing",
+    "Interior Detailing & Polish",
+    "Teflon / Ceramic Coating",
+    "Coolant Flush & Top-Up",
+    "Wiper Blade Replacement",
+    "Battery Health Check & Replace",
+    "Bumper Denting & Painting",
+    "Scratch & Swirl Removal",
+    "Spark Plug Replacement",
+    "Air Filter Replacement",
+  ];
+
+  const selectedVehicle = vehicles.find((v) => v.id === vehicleId);
+  const carModel = selectedVehicle?.model ? selectedVehicle.model.trim() : "";
+
+  const suggestions = [];
+  if (carModel) {
+    suggestions.push(
+      `${carModel} Engine Oil Change`,
+      `${carModel} Oil Filter Replacement`,
+      `${carModel} Brake Pad Replacement`,
+      `${carModel} AC Filter Replacement`,
+      `${carModel} Bumper Denting & Painting`,
+      `${carModel} Spark Plug Replacement`
+    );
+  }
+  if (allBillItems) {
+    allBillItems.forEach((item) => {
+      const desc = item.description?.trim();
+      if (desc && !baseServices.includes(desc) && !suggestions.includes(desc)) {
+        suggestions.push(desc);
+      }
+    });
+  }
+  baseServices.forEach((service) => {
+    if (!suggestions.includes(service)) {
+      suggestions.push(service);
+    }
+  });
 
   const subtotal    = items.reduce((s, i) => s + i.quantity * i.unit_price, 0);
   const taxAmount   = gstEnabled ? Math.round(subtotal * (gstRate / 100) * 100) / 100 : 0;
@@ -1047,7 +1085,13 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, presetCu
                     value={item.description}
                     onChange={(e) => updateItem(i, "description", e.target.value)}
                     className="flat-input flex-1 sm:w-60 md:w-80"
+                    list={`suggestions-${i}`}
                   />
+                  <datalist id={`suggestions-${i}`}>
+                    {suggestions.map((sug, sIdx) => (
+                      <option key={sIdx} value={sug} />
+                    ))}
+                  </datalist>
                 </div>
                 <div className="flex items-center gap-2 w-full sm:w-auto">
                   <input

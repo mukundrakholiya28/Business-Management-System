@@ -117,9 +117,6 @@ export default function ProfilePage() {
                       <Field label="Established Year">
                         <input value={profile.established || ""} onChange={(e) => set("established", e.target.value)} className="flat-input" placeholder="2004" />
                       </Field>
-                      <Field label="GSTIN">
-                        <input value={profile.gstin || ""} onChange={(e) => set("gstin", e.target.value)} className="flat-input" placeholder="24ABCDE1234F1Z5" />
-                      </Field>
                       <Field label="Phone" icon={Phone}>
                         <input value={profile.phone || ""} onChange={(e) => set("phone", e.target.value)} className="flat-input" placeholder="+91 98765 43210" />
                       </Field>
