@@ -178,17 +178,38 @@ export default function BillingPage() {
       return;
     }
 
+    let emailSent = false;
+    let emailError = null;
+
+    if (customer?.email) {
+      try {
+        showToast("Sending invoice email...");
+        const { sendInvoiceEmail } = await import("@/lib/email");
+        await sendInvoiceEmail({ bill, items, customer, vehicle });
+        emailSent = true;
+      } catch (err) {
+        emailError = err.message;
+        console.error("Failed to send email:", err);
+      }
+    }
+
     try {
-      showToast(`Sending invoice INV-${bill.bill_number} to ${customer.name} via WhatsApp...`);
-      await sendWhatsApp(
+      sendWhatsApp(
         customer.phone_number,
         customer.name,
         `INV-${bill.bill_number}`,
         formatCurrency(bill.total_amount)
       );
-      showToast(`Invoice sent successfully via WhatsApp to ${customer.name}!`);
+
+      if (emailSent) {
+        showToast(`Email sent & WhatsApp opened for ${customer.name}`);
+      } else if (emailError) {
+        showToast(`WhatsApp opened, but email failed: ${emailError}`);
+      } else {
+        showToast(`WhatsApp opened (No email on file for ${customer.name})`);
+      }
     } catch (err) {
-      showToast(`Failed to send WhatsApp: ${err.message}`);
+      showToast(`Failed to open WhatsApp: ${err.message}`);
     }
   };
 
@@ -535,13 +556,12 @@ function BillDetailModal({ bill, items, customers, vehicles, onClose, onExportPD
     setSending(true);
     setSendError(null);
     try {
-      await sendWhatsApp(
+      sendWhatsApp(
         customer?.phone_number,
         customer?.name,
         `INV-${bill.bill_number}`,
         formatCurrency(bill.total_amount)
       );
-      showToast?.(`Invoice INV-${bill.bill_number} sent successfully to ${customer?.name}!`);
       setSending(false);
     } catch (err) {
       setSendError(err.message);

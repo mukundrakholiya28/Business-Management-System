@@ -8,28 +8,41 @@
  * @param {string} totalAmount   - e.g. "₹5,000"
  * @param {string} [invoicePdfUrl] - Optional: URL to download invoice PDF
  */
-export async function sendWhatsApp(phoneNumber, customerName, invoiceNumber, totalAmount, invoicePdfUrl) {
+export function sendWhatsApp(phoneNumber, customerName, invoiceNumber, totalAmount, invoicePdfUrl) {
   // Remove all non-digit characters from phone number
   const cleanPhone = phoneNumber.replace(/\D/g, '');
   
-  const response = await fetch("/api/send-whatsapp", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      to: cleanPhone,
-      customerName,
-      invoiceNumber,
-    }),
-  });
+  // Construct the message
+  let message = `Hello ${customerName},\n\n`;
+  message += `Thank you for choosing *Shree Royal Car*! 🚗\n\n`;
+  message += `Your invoice *${invoiceNumber}* has been generated.\n`;
+  message += `*Total Amount: ${totalAmount}*\n\n`;
   
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.error || "Failed to send WhatsApp message");
+  if (invoicePdfUrl) {
+    message += `📄 Download Invoice: ${invoicePdfUrl}\n\n`;
   }
   
-  return { success: true, messageId: data.messageId };
+  message += `For any queries, feel free to contact us.\n\n`;
+  message += `Best regards,\n`;
+  message += `Shree Royal Car Team`;
+  
+  // Encode message for URL
+  const encodedMessage = encodeURIComponent(message);
+  
+  // Detect mobile device
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  
+  // Select base URL (WhatsApp App for mobile, WhatsApp Web for desktop)
+  const baseUrl = isMobile 
+    ? "https://api.whatsapp.com/send" 
+    : "https://web.whatsapp.com/send";
+  
+  const whatsappUrl = `${baseUrl}?phone=${cleanPhone}&text=${encodedMessage}`;
+  
+  // Open in new tab
+  window.open(whatsappUrl, '_blank');
+  
+  return { success: true };
 }
 
 /**
