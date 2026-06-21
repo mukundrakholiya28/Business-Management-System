@@ -1,18 +1,17 @@
 /**
  * exportInvoicePDF
  * ─────────────────────────────────────────────────────────────────────────
- * 1. Fetches the rendered invoice HTML from POST /api/generate-invoice
- * 2. Injects the .sheet element into a hidden <div> in the MAIN document
- *    (html2canvas cannot reach into cross-origin iframes)
- * 3. Screenshots it with html2canvas at 2× scale
- * 4. Places the image into a jsPDF A4 document and saves it
+ * 1. Fetches rendered invoice HTML (one .sheet per A4 page) from the server
+ * 2. Mounts all .sheet elements into a hidden off-screen div in the main doc
+ * 3. Screenshots each .sheet individually with html2canvas at 2× scale
+ * 4. Places each screenshot on its own A4 page in jsPDF and saves
  */
 
 export async function exportInvoicePDF({ bill, items, customer, vehicle }, onToast) {
   let container = null;
 
   try {
-    // ── 1. Fetch rendered HTML from server ────────────────────────────────
+    // ── 1. Fetch rendered HTML ────────────────────────────────────────────
     const res = await fetch("/api/generate-invoice", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
@@ -26,18 +25,13 @@ export async function exportInvoicePDF({ bill, items, customer, vehicle }, onToa
 
     const html = await res.text();
 
-    // ── 2. Parse the HTML and extract the <style> + .sheet element ────────
-    const parser = new DOMParser();
-    const doc    = parser.parseFromString(html, "text/html");
+    // ── 2. Parse HTML — extract styles + all .sheet elements ─────────────
+    const parser  = new DOMParser();
+    const doc     = parser.parseFromString(html, "text/html");
+    const styles  = Array.from(doc.querySelectorAll("style")).map((s) => s.outerHTML).join("\n");
+    const sheets  = Array.from(doc.querySelectorAll(".sheet"));
 
-    // Grab all <style> tags from the parsed document
-    const styles = Array.from(doc.querySelectorAll("style"))
-      .map((s) => s.outerHTML)
-      .join("\n");
-
-    // The invoice content is inside .sheet
-    const sheet = doc.querySelector(".sheet");
-    if (!sheet) throw new Error("Invoice template missing .sheet element");
+    if (!sheets.length) throw new Error("Invoice template missing .sheet element");
 
     // ── 3. Mount into the main document (off-screen) ──────────────────────
     container = document.createElement("div");
@@ -50,70 +44,63 @@ export async function exportInvoicePDF({ bill, items, customer, vehicle }, onToa
       "z-index:-1",
     ].join(";");
 
-    // Inject scoped styles + the sheet HTML
-    container.innerHTML = styles + sheet.outerHTML;
+    container.innerHTML = styles + sheets.map((s) => s.outerHTML).join("\n");
     document.body.appendChild(container);
 
-    const sheetEl = container.querySelector(".sheet");
-
-    // Wait a tick for styles to apply + fonts to load
+    // Wait for fonts + layout
     await document.fonts.ready;
-    await new Promise((r) => setTimeout(r, 200));
+    await new Promise((r) => setTimeout(r, 250));
 
-    // ── 4. Screenshot with html2canvas ────────────────────────────────────
+    // ── 4. Screenshot each .sheet with html2canvas ────────────────────────
     const { default: html2canvas } = await import("html2canvas");
 
-    const canvas = await html2canvas(sheetEl, {
-      scale:           2,
-      useCORS:         true,
-      allowTaint:      false,
-      backgroundColor: "#ffffff",
-      logging:         false,
-      width:           794,
-      height:          sheetEl.scrollHeight,
-      windowWidth:     794,
-      windowHeight:    sheetEl.scrollHeight,
-    });
+    const mountedSheets = Array.from(container.querySelectorAll(".sheet"));
+    const canvases = [];
 
-    // ── 5. Build PDF with jsPDF ───────────────────────────────────────────
+    for (const sheetEl of mountedSheets) {
+      const c = await html2canvas(sheetEl, {
+        scale:           2,
+        useCORS:         true,
+        allowTaint:      false,
+        backgroundColor: "#ffffff",
+        logging:         false,
+        width:           794,
+        height:          sheetEl.offsetHeight || 1123,
+        windowWidth:     794,
+        windowHeight:    sheetEl.offsetHeight || 1123,
+      });
+      canvases.push(c);
+    }
+
+    // ── 5. Build A4 PDF — one canvas per page ─────────────────────────────
     const { default: jsPDF } = await import("jspdf");
 
-    const imgData = canvas.toDataURL("image/jpeg", 0.97);
-
-    const A4_W_MM  = 210;
-    const A4_H_MM  = 297;
-
-    // px → mm: canvas is at 2× scale, 96dpi → 1px = 0.2646mm at 1×, 0.1323mm at 2×
-    const pxToMm   = (px) => (px / 2) * (25.4 / 96);
-    const totalHMM = pxToMm(canvas.height);
+    const A4_W = 210;  // mm
+    const A4_H = 297;  // mm
 
     const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
 
-    let yPos      = 0;   // how far down the image we've printed (in mm)
-    let pageCount = 0;
+    canvases.forEach((canvas, idx) => {
+      if (idx > 0) pdf.addPage();
 
-    while (yPos < totalHMM) {
-      if (pageCount > 0) pdf.addPage();
+      const imgData = canvas.toDataURL("image/jpeg", 0.97);
 
-      // Slice height for this page
-      const sliceH = Math.min(A4_H_MM, totalHMM - yPos);
+      // Scale image to fit A4 width; if taller than A4, fit to height instead
+      const aspectRatio = canvas.width / canvas.height;
+      let imgW = A4_W;
+      let imgH = A4_W / aspectRatio;
 
-      // addImage(data, format, x, y, width, height, alias, compression, rotation)
-      // We shift the image up by yPos to show the next slice
-      pdf.addImage(
-        imgData,
-        "JPEG",
-        0,
-        -yPos,
-        A4_W_MM,
-        totalHMM,
-        `page${pageCount}`,
-        "FAST"
-      );
+      // If still taller than A4 (very long page), scale down to fit height
+      if (imgH > A4_H) {
+        imgH = A4_H;
+        imgW = A4_H * aspectRatio;
+      }
 
-      yPos      += sliceH;
-      pageCount += 1;
-    }
+      // Centre horizontally if narrower than A4
+      const xOffset = (A4_W - imgW) / 2;
+
+      pdf.addImage(imgData, "JPEG", xOffset, 0, imgW, imgH, `sheet${idx}`, "FAST");
+    });
 
     pdf.save(`INV-${bill.bill_number}.pdf`);
     onToast?.("PDF downloaded");
@@ -122,7 +109,6 @@ export async function exportInvoicePDF({ bill, items, customer, vehicle }, onToa
     console.error("[exportInvoicePDF]", err);
     onToast?.(`PDF failed: ${err.message}`);
   } finally {
-    // ── 6. Cleanup ────────────────────────────────────────────────────────
     if (container && document.body.contains(container)) {
       document.body.removeChild(container);
     }

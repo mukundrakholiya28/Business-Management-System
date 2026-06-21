@@ -82,19 +82,77 @@ function cssAsInlineTag() {
       "--font-brand: 'Vortice', 'Oswald', 'NotoSans', 'Archivo Black', sans-serif;"
     );
 
-  // 3. Table overflow fix
+  // 3. Full A4 layout — flex column, footer always at bottom
   css += `
-/* ── Overflow fix ── */
-.sheet { width:100%; max-width:800px; overflow:hidden; box-sizing:border-box; }
-.items { padding:32px 40px 8px; overflow:hidden; box-sizing:border-box; }
-table.items-table { width:100%; max-width:100%; table-layout:fixed; box-sizing:border-box; }
-table.items-table th, table.items-table td { overflow:hidden; text-overflow:ellipsis; word-break:break-word; }
+/* ── A4 full-page layout ── */
+html, body { margin:0; padding:0; background:var(--paper); }
 
-/* ── Print: fill the page edge-to-edge ── */
+.sheet {
+  width: 794px;
+  min-height: 1123px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-sizing: border-box;
+  margin: 0 auto;
+  page-break-after: always;
+}
+.sheet:last-child { page-break-after: avoid; }
+
+.body-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.items {
+  flex: 1;
+  padding: 32px 40px 8px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.bottom-section { margin-top: auto; }
+
+table.items-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  box-sizing: border-box;
+}
+table.items-table th,
+table.items-table td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-word;
+}
+
+/* Continuation page compact header */
+.cont-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 40px;
+  background: var(--navy);
+  border-bottom: 1px solid var(--navy);
+}
+.cont-invoice-num {
+  font-family: var(--font-brand);
+  font-size: 15px;
+  color: var(--yellow-soft);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+.cont-label {
+  font-size: 11px;
+  color: var(--yellow-soft);
+  opacity: 0.7;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
 @media print {
   @page { size: A4; margin: 0; }
-  html, body { margin: 0; padding: 0; }
-  .sheet { margin: 0; max-width: 100%; border: none; }
+  html, body { margin: 0; padding: 0; background: white; }
+  .sheet { margin: 0; border: none; width: 100%; min-height: 100vh; }
 }`;
 
   return `<style>${buildFontFaces()}\n${css}</style>`;

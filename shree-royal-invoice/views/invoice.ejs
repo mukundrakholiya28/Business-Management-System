@@ -4,18 +4,55 @@
 <meta charset="UTF-8" />
 <title>Invoice <%= invoice.number %> — <%= company.name %></title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-
-<!-- Flat minimalist body font -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Oswald:wght@600;700&display=swap" rel="stylesheet">
-
 <link rel="stylesheet" href="/css/invoice.css" />
 </head>
 <body>
 
+<%
+/**
+ * Page-splitting logic
+ * ────────────────────
+ * We estimate how many items fit on the first page vs continuation pages,
+ * then render as many <div class="sheet"> blocks as needed.
+ *
+ * Heights are approximate (in px at 96dpi, matching the 794px wide viewport):
+ *   A4 page       : 1123px
+ *   header        :  172px
+ *   meta-strip    :  130px
+ *   items header  :   42px  (table thead)
+ *   item row      :   42px  each
+ *   totals-wrap   :  120px
+ *   bottom-section:  200px  (payment + notes + footer)
+ *
+ * First page available for item rows ≈ 1123 - 172 - 130 - 42 - 120 - 200 = 457px → ~10 rows
+ * Continuation page available        ≈ 1123 - 42  - 120 - 200 = 761px → ~18 rows
+ */
+
+const ROW_PX        = 42;
+const FIRST_PAGE_ROWS  = 10;
+const CONT_PAGE_ROWS   = 18;
+
+const pages = [];
+if (items.length <= FIRST_PAGE_ROWS) {
+  pages.push({ items: items, isFirst: true, isLast: true });
+} else {
+  // First page
+  pages.push({ items: items.slice(0, FIRST_PAGE_ROWS), isFirst: true, isLast: false });
+  // Continuation pages
+  let offset = FIRST_PAGE_ROWS;
+  while (offset < items.length) {
+    const chunk = items.slice(offset, offset + CONT_PAGE_ROWS);
+    offset += CONT_PAGE_ROWS;
+    pages.push({ items: chunk, isFirst: false, isLast: offset >= items.length });
+  }
+}
+%>
+
+<% pages.forEach(function(page, pageIdx) { %>
 <div class="sheet">
 
-  <!-- ===== Header ===== -->
+  <% if (page.isFirst) { %>
+  <!-- ===== Header (first page only) ===== -->
   <div class="header">
     <div class="brand">
       <img src="<%= company.logo %>" alt="<%= company.name %> logo" />
@@ -31,7 +68,7 @@
     </div>
   </div>
 
-  <!-- ===== Meta strip: company / bill-to / invoice dates ===== -->
+  <!-- ===== Meta strip (first page only) ===== -->
   <div class="meta-strip">
     <div class="meta-block">
       <div class="eyebrow">From</div>
@@ -60,83 +97,95 @@
       <span class="status-pill"><%= invoice.status %></span>
     </div>
   </div>
+  <% } else { %>
+  <!-- ===== Continuation header (compact, no brand) ===== -->
+  <div class="cont-header">
+    <span class="cont-invoice-num">#<%= invoice.number %></span>
+    <span class="cont-label">Continued — Page <%= pageIdx + 1 %></span>
+  </div>
+  <% } %>
 
-  <!-- ===== Line items ===== -->
-  <div class="items">
-    <table class="items-table">
-      <thead>
-        <tr>
-          <th style="width: 50%">Description</th>
-          <th class="num" style="width: 12%">Qty</th>
-          <th class="num" style="width: 19%">Rate</th>
-          <th class="num" style="width: 19%">Amount</th>
-        </tr>
-      </thead>
-      <tbody>
-        <% items.forEach(function(item) { %>
-        <tr>
-          <td><%= item.description %></td>
-          <td class="num"><%= item.qty %></td>
-          <td class="num">&#x20B9;<%= item.rate.toLocaleString('en-IN') %></td>
-          <td class="num">&#x20B9;<%= item.amount.toLocaleString('en-IN') %></td>
-        </tr>
-        <% }) %>
-      </tbody>
-    </table>
+  <!-- ===== Body: items + totals (grows to fill space) ===== -->
+  <div class="body-content">
+    <div class="items">
+      <table class="items-table">
+        <thead>
+          <tr>
+            <th style="width:50%">Description</th>
+            <th class="num" style="width:12%">Qty</th>
+            <th class="num" style="width:19%">Rate</th>
+            <th class="num" style="width:19%">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% page.items.forEach(function(item) { %>
+          <tr>
+            <td><%= item.description %></td>
+            <td class="num"><%= item.qty %></td>
+            <td class="num">&#x20B9;<%= item.rate.toLocaleString('en-IN') %></td>
+            <td class="num">&#x20B9;<%= item.amount.toLocaleString('en-IN') %></td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+
+    <% if (page.isLast) { %>
+    <!-- Totals only on the last page -->
+    <div class="totals-wrap">
+      <div class="totals">
+        <div class="row muted">
+          <span>Subtotal</span>
+          <span>&#x20B9;<%= charges.subtotal.toLocaleString('en-IN') %></span>
+        </div>
+        <% if (charges.discount && charges.discount > 0) { %>
+        <div class="row muted">
+          <span>Discount</span>
+          <span>&minus;&#x20B9;<%= charges.discount.toLocaleString('en-IN') %></span>
+        </div>
+        <% } %>
+        <% if (charges.taxRate && charges.taxRate > 0 && charges.taxAmount > 0) { %>
+        <div class="row muted">
+          <span>GST (<%= charges.taxRate %>%)</span>
+          <span>&#x20B9;<%= charges.taxAmount.toLocaleString('en-IN') %></span>
+        </div>
+        <% } %>
+        <div class="row grand">
+          <span>Total Due</span>
+          <span>&#x20B9;<%= charges.total.toLocaleString('en-IN') %></span>
+        </div>
+      </div>
+    </div>
+    <% } %>
   </div>
 
-  <!-- ===== Totals ===== -->
-  <div class="totals-wrap">
-    <div class="totals">
-      <div class="row muted">
-        <span>Subtotal</span>
-        <span>&#x20B9;<%= charges.subtotal.toLocaleString('en-IN') %></span>
+  <!-- ===== Bottom section: payment + notes + footer (always at bottom) ===== -->
+  <div class="bottom-section">
+    <% if (page.isLast) { %>
+    <div class="payment">
+      <div>
+        <div class="eyebrow">Payment Methods</div>
+        <div class="line"><span>Accepted via</span> <%= payment.method %></div>
+        <div class="line"><span>UPI ID</span> <%= payment.upiId %></div>
       </div>
-      <% if (charges.discount && charges.discount > 0) { %>
-      <div class="row muted">
-        <span>Discount</span>
-        <span>&minus;&#x20B9;<%= charges.discount.toLocaleString('en-IN') %></span>
+      <div>
+        <div class="eyebrow">Bank Transfer</div>
+        <div class="line"><span>Bank</span> <%= payment.bankName %></div>
+        <div class="line"><span>Account No.</span> <%= payment.accountNumber %></div>
+        <div class="line"><span>IFSC</span> <%= payment.ifsc %></div>
       </div>
-      <% } %>
-      <% if (charges.taxRate && charges.taxRate > 0 && charges.taxAmount > 0) { %>
-      <div class="row muted">
-        <span>GST (<%= charges.taxRate %>%)</span>
-        <span>&#x20B9;<%= charges.taxAmount.toLocaleString('en-IN') %></span>
-      </div>
-      <% } %>
-      <div class="row grand">
-        <span>Total Due</span>
-        <span>&#x20B9;<%= charges.total.toLocaleString('en-IN') %></span>
-      </div>
+    </div>
+    <div class="notes"><%= payment.notes %></div>
+    <% } %>
+
+    <div class="footer-strip">
+      <span>Thank you for trusting <strong><%= company.name %></strong></span>
+      <span><%= company.phone %></span>
     </div>
   </div>
 
-  <!-- ===== Payment details ===== -->
-  <div class="payment">
-    <div>
-      <div class="eyebrow">Payment Methods</div>
-      <div class="line"><span>Accepted via</span> <%= payment.method %></div>
-      <div class="line"><span>UPI ID</span> <%= payment.upiId %></div>
-    </div>
-    <div>
-      <div class="eyebrow">Bank Transfer</div>
-      <div class="line"><span>Bank</span> <%= payment.bankName %></div>
-      <div class="line"><span>Account No.</span> <%= payment.accountNumber %></div>
-      <div class="line"><span>IFSC</span> <%= payment.ifsc %></div>
-    </div>
-  </div>
-
-  <div class="notes">
-    <%= payment.notes %>
-  </div>
-
-  <!-- ===== Footer ===== -->
-  <div class="footer-strip">
-    <span>Thank you for trusting <strong><%= company.name %></strong></span>
-    <span><%= company.phone %></span>
-  </div>
-
-</div>
+</div><!-- /.sheet -->
+<% }) %>
 
 </body>
 </html>
