@@ -181,13 +181,13 @@ export default function BillingPage() {
 
     let pdfUrl = null;
     let pdfBase64 = null;
+    let pdfBlob = null;
 
     try {
       showToast("Generating invoice PDF...");
       const pdf = await generateInvoicePDF({ bill, items, customer, vehicle });
       if (pdf) {
-        showToast("Uploading PDF to storage...");
-        const pdfBlob = pdf.output("blob");
+        pdfBlob = pdf.output("blob");
 
         // Convert to base64 for email
         pdfBase64 = await new Promise((resolve, reject) => {
@@ -257,24 +257,55 @@ export default function BillingPage() {
     }
 
     try {
-      sendWhatsApp(
-        customer.phone_number,
-        customer.name,
-        `INV-${bill.bill_number}`,
-        formatCurrency(bill.total_amount),
-        pdfUrl
-      );
-
-      if (emailSent) {
-        if (emailSent.redirected) {
-          showToast(`Email redirected to sandbox (${emailSent.authorizedEmail}) & WhatsApp opened`);
-        } else {
-          showToast(`Email sent & WhatsApp opened for ${customer.name}`);
+      // Check if native sharing is available for the PDF file (mobile/PWA support)
+      let sharedNatively = false;
+      if (pdfBlob && navigator.share && navigator.canShare) {
+        const pdfFile = new File([pdfBlob], `INV-${bill.bill_number}.pdf`, { type: "application/pdf" });
+        if (navigator.canShare({ files: [pdfFile] })) {
+          try {
+            await navigator.share({
+              files: [pdfFile],
+              title: `Invoice INV-${bill.bill_number}`,
+              text: `Hello ${customer.name},\n\nThank you for choosing Shree Royal Car! Your invoice INV-${bill.bill_number} has been generated.\nTotal Amount: ${formatCurrency(bill.total_amount)}\n\nBest regards,\nShree Royal Car Team`,
+            });
+            sharedNatively = true;
+            if (emailSent) {
+              if (emailSent.redirected) {
+                showToast(`Email redirected to sandbox (${emailSent.authorizedEmail}) & native share opened`);
+              } else {
+                showToast(`Email sent & native share opened for ${customer.name}`);
+              }
+            } else if (emailError) {
+              showToast(`Native share opened, but email failed: ${emailError}`);
+            } else {
+              showToast(`Native share opened (No email on file for ${customer.name})`);
+            }
+          } catch (shareErr) {
+            console.warn("Native share cancelled or failed:", shareErr);
+          }
         }
-      } else if (emailError) {
-        showToast(`WhatsApp opened, but email failed: ${emailError}`);
-      } else {
-        showToast(`WhatsApp opened (No email on file for ${customer.name})`);
+      }
+
+      if (!sharedNatively) {
+        sendWhatsApp(
+          customer.phone_number,
+          customer.name,
+          `INV-${bill.bill_number}`,
+          formatCurrency(bill.total_amount),
+          pdfUrl
+        );
+
+        if (emailSent) {
+          if (emailSent.redirected) {
+            showToast(`Email redirected to sandbox (${emailSent.authorizedEmail}) & WhatsApp opened`);
+          } else {
+            showToast(`Email sent & WhatsApp opened for ${customer.name}`);
+          }
+        } else if (emailError) {
+          showToast(`WhatsApp opened, but email failed: ${emailError}`);
+        } else {
+          showToast(`WhatsApp opened (No email on file for ${customer.name})`);
+        }
       }
     } catch (err) {
       showToast(`Failed to open WhatsApp: ${err.message}`);
