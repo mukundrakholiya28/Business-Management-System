@@ -11,8 +11,7 @@ import {
   normalizeSearch,
   formatVehicleNumber,
 } from "@/lib/helpers";
-import { sendWhatsApp, formatWhatsAppDate } from "@/lib/whatsapp";
-import { sendInvoiceEmail } from "@/lib/email";
+import { sendWhatsApp } from "@/lib/whatsapp";
 import { exportInvoicePDF } from "@/lib/pdf";
 import {
   loadWorkshopData,
@@ -173,37 +172,24 @@ export default function BillingPage() {
     const customer = customers.find((c) => c.id === bill.customer_id);
     const vehicle  = vehicles.find((v) => v.id === bill.vehicle_id);
     const items    = billItems.filter((i) => i.bill_id === bill.id);
-    const results  = [];
 
-    // Send email if customer has an email address
-    if (customer?.email) {
-      try {
-        await sendInvoiceEmail({ bill, items, customer, vehicle });
-        results.push("email");
-      } catch (err) {
-        showToast(`Email failed: ${err.message}`);
-      }
+    if (!customer?.phone_number) {
+      showToast("No phone number on file for this customer.");
+      return;
     }
 
-    // Send WhatsApp
-    if (customer?.phone_number) {
-      try {
-        await sendWhatsApp(
-          customer.phone_number,
-          customer.name,
-          `INV-${bill.bill_number}`,
-          formatWhatsAppDate(bill.created_at)
-        );
-        results.push("WhatsApp");
-      } catch (err) {
-        showToast(`WhatsApp failed: ${err.message}`);
-      }
-    }
-
-    if (results.length) {
-      showToast(`Invoice sent via ${results.join(" & ")} to ${customer?.name}`);
-    } else if (!customer?.email && !customer?.phone_number) {
-      showToast("No email or phone on file for this customer.");
+    // Send WhatsApp message (opens WhatsApp Web/App)
+    try {
+      sendWhatsApp(
+        customer.phone_number,
+        customer.name,
+        `INV-${bill.bill_number}`,
+        formatCurrency(bill.total_amount)
+        // TODO: Add invoice PDF URL when available (e.g., deployed URL)
+      );
+      showToast(`Opening WhatsApp to send invoice to ${customer.name}`);
+    } catch (err) {
+      showToast(`Failed to open WhatsApp: ${err.message}`);
     }
   };
 
@@ -549,15 +535,15 @@ function BillDetailModal({ bill, items, customers, vehicles, onClose, onExportPD
     setSending(true);
     setSendError(null);
     try {
-      await sendWhatsApp(
+      sendWhatsApp(
         customer?.phone_number,
         customer?.name,
         `INV-${bill.bill_number}`,
-        formatWhatsAppDate(bill.created_at)
+        formatCurrency(bill.total_amount)
       );
+      setSending(false);
     } catch (err) {
       setSendError(err.message);
-    } finally {
       setSending(false);
     }
   };
@@ -788,20 +774,7 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, onClose,
     const savedBill = buildBill(finalStatus);
     const savedItems = buildItems(savedBill.id);
 
-    // Send WhatsApp for all new invoices where customer has a phone
-    if (!isEditing) {
-      const customer = customers.find((c) => c.id === customerId);
-      if (customer?.phone_number) {
-        sendWhatsApp(
-          customer.phone_number,
-          customer.name,
-          `INV-${savedBill.bill_number}`,
-          formatWhatsAppDate(savedBill.created_at)
-        ).catch((err) => {
-          console.error("[WhatsApp send failed]", err.message);
-        });
-      }
-    }
+    // Removed automatic WhatsApp sending - user will use Send button instead
 
     onSave({ bill: savedBill, items: savedItems, isEditing });
   };

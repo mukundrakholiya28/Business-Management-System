@@ -486,18 +486,20 @@ function BillDetailModal({ bill, items, customer, vehicle, onClose, onExportPDF,
     setSending(true);
     setSendError(null);
     try {
-      const { sendWhatsApp, formatWhatsAppDate } = await import("@/lib/whatsapp");
-      await sendWhatsApp(
+      const { sendWhatsApp } = await import("@/lib/whatsapp");
+      const { formatCurrency } = await import("@/lib/helpers");
+      sendWhatsApp(
         customer?.phone_number,
         customer?.name,
         `INV-${bill.bill_number}`,
-        formatWhatsAppDate(bill.created_at)
+        formatCurrency(bill.total_amount)
       );
+      setSending(false);
     } catch (err) {
       setSendError(err.message);
-    } finally {
       setSending(false);
     }
+  };
   };
 
   return (
@@ -680,15 +682,7 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, presetCu
     const savedBill   = buildBill(finalStatus);
     const savedItems  = buildItems(savedBill.id);
 
-    if (!isEditing) {
-      const cust = customers.find((c) => c.id === customerId);
-      if (cust?.phone_number) {
-        import("@/lib/whatsapp").then(({ sendWhatsApp, formatWhatsAppDate }) => {
-          sendWhatsApp(cust.phone_number, cust.name, `INV-${savedBill.bill_number}`, formatWhatsAppDate(savedBill.created_at))
-            .catch((err) => console.error("[WhatsApp send failed]", err.message));
-        });
-      }
-    }
+    // Removed automatic WhatsApp sending - user will use Send button instead
 
     onSave({ bill: savedBill, items: savedItems, isEditing });
   };
