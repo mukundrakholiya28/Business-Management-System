@@ -30,6 +30,7 @@ export async function POST(request) {
       vehicle, items = [],
       subtotal, taxAmount, discount, totalAmount,
       status, paymentMethod, notes,
+      pdfBase64, pdfUrl,
     } = body;
 
     if (!to || !customerName || !invoiceNumber) {
@@ -131,6 +132,12 @@ export async function POST(request) {
       </div>
 
       ${notes ? `<p style="margin:16px 0 0;font-size:12px;color:#9CA3AF;"><strong style="color:#6B7280;">Notes:</strong> ${notes}</p>` : ""}
+
+      ${pdfUrl ? `
+      <div style="text-align:center;margin-top:28px;">
+        <a href="${pdfUrl}" target="_blank" style="display:inline-block;padding:12px 24px;background:#F59E0B;color:#ffffff;text-decoration:none;font-weight:600;border-radius:8px;font-size:14px;box-shadow:0 2px 4px rgba(0,0,0,0.1);letter-spacing:0.5px;">Download PDF Invoice</a>
+      </div>
+      ` : ""}
     </div>
 
     <!-- Footer -->
@@ -142,11 +149,20 @@ export async function POST(request) {
 </body>
 </html>`;
 
+    const attachments = [];
+    if (pdfBase64) {
+      attachments.push({
+        filename: `${invoiceNumber}.pdf`,
+        content: Buffer.from(pdfBase64, "base64"),
+      });
+    }
+
     const { data, error } = await resend.emails.send({
       from: FROM,
       to: [to],
       subject: `Invoice ${invoiceNumber} from Shree Royal Car`,
       html,
+      attachments,
     });
 
     if (error) {

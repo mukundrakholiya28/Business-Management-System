@@ -2,9 +2,9 @@ import { formatVehicleNumber } from "@/lib/helpers";
 
 /**
  * Send an invoice email via the internal API route.
- * @param {{ bill, items, customer, vehicle }} params
+ * @param {{ bill, items, customer, vehicle, pdfBase64, pdfUrl }} params
  */
-export async function sendInvoiceEmail({ bill, items, customer, vehicle }) {
+export async function sendInvoiceEmail({ bill, items, customer, vehicle, pdfBase64, pdfUrl }) {
   if (!customer?.email) {
     throw new Error("Customer has no email address on file.");
   }
@@ -34,6 +34,8 @@ export async function sendInvoiceEmail({ bill, items, customer, vehicle }) {
       status:        bill.status,
       paymentMethod: bill.payment_method,
       notes:         bill.notes,
+      pdfBase64,
+      pdfUrl,
     }),
   });
 

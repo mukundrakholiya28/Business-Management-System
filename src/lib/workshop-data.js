@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { generateId } from "@/lib/helpers";
+import { generateId, normalizePhoneNumber } from "@/lib/helpers";
 
 export function isSupabaseReady() {
   return Boolean(supabase);
@@ -86,6 +86,10 @@ export async function saveCustomerWithVehicles({ customer, vehicles }) {
 
   // Insert customer — include user_id
   const { id: _id, ...customerPayload } = customer;
+  
+  // Normalize phone number
+  customerPayload.phone_number = normalizePhoneNumber(customerPayload.phone_number);
+
   const { data: createdCustomer, error: customerError } = await supabase
     .from("customers")
     .insert([{ ...customerPayload, user_id: userId }])
@@ -281,7 +285,7 @@ export async function updateCustomer(customer) {
     .from("customers")
     .update({
       name:         customer.name,
-      phone_number: customer.phone_number,
+      phone_number: normalizePhoneNumber(customer.phone_number),
       email:        customer.email   ?? null,
       address:      customer.address ?? null,
     })

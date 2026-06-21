@@ -118,3 +118,15 @@ export const MONTHS = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ];
+
+/**
+ * Clean phone numbers and prepend country code 91 if length is 10 digits
+ */
+export function normalizePhoneNumber(phone) {
+  if (!phone) return "";
+  const cleanPhone = phone.replace(/\D/g, "");
+  if (cleanPhone.length === 10) {
+    return "91" + cleanPhone;
+  }
+  return cleanPhone;
+}

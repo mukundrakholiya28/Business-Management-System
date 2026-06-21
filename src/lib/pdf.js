@@ -7,15 +7,24 @@
  * 4. Places each screenshot on its own A4 page in jsPDF and saves
  */
 
-export async function exportInvoicePDF({ bill, items, customer, vehicle }, onToast) {
+export async function generateInvoicePDF({ bill, items, customer, vehicle }) {
   let container = null;
 
   try {
+    // Fetch profile details client-side (authenticated session)
+    let profile = null;
+    try {
+      const { loadProfile } = await import("@/lib/workshop-data");
+      profile = await loadProfile();
+    } catch (e) {
+      console.warn("Could not load business profile client-side:", e);
+    }
+
     // ── 1. Fetch rendered HTML ────────────────────────────────────────────
     const res = await fetch("/api/generate-invoice", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ bill, items, customer, vehicle }),
+      body:    JSON.stringify({ bill, items, customer, vehicle, profile }),
     });
 
     if (!res.ok) {
@@ -102,15 +111,22 @@ export async function exportInvoicePDF({ bill, items, customer, vehicle }, onToa
       pdf.addImage(imgData, "JPEG", xOffset, 0, imgW, imgH, `sheet${idx}`, "FAST");
     });
 
-    pdf.save(`INV-${bill.bill_number}.pdf`);
-    onToast?.("PDF downloaded");
+    return pdf;
 
-  } catch (err) {
-    console.error("[exportInvoicePDF]", err);
-    onToast?.(`PDF failed: ${err.message}`);
   } finally {
     if (container && document.body.contains(container)) {
       document.body.removeChild(container);
     }
+  }
+}
+
+export async function exportInvoicePDF({ bill, items, customer, vehicle }, onToast) {
+  try {
+    const pdf = await generateInvoicePDF({ bill, items, customer, vehicle });
+    pdf.save(`INV-${bill.bill_number}.pdf`);
+    onToast?.("PDF downloaded");
+  } catch (err) {
+    console.error("[exportInvoicePDF]", err);
+    onToast?.(`PDF failed: ${err.message}`);
   }
 }

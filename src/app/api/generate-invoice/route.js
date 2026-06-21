@@ -276,22 +276,25 @@ export async function GET() {
 
 export async function POST(request) {
   try {
-    const { bill, items, customer, vehicle } = await request.json();
+    const { bill, items, customer, vehicle, profile: clientProfile } = await request.json();
 
-    // Fetch business profile from Supabase (falls back to env vars if unavailable)
-    let profile = null;
-    try {
-      const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-      );
-      const { data } = await supabase
-        .from("business_profile")
-        .select("*")
-        .limit(1)
-        .single();
-      profile = data;
-    } catch (_) { /* use env var fallbacks */ }
+    let profile = clientProfile;
+
+    if (!profile) {
+      // Fetch business profile from Supabase (falls back to env vars if unavailable)
+      try {
+        const supabase = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+        );
+        const { data } = await supabase
+          .from("business_profile")
+          .select("*")
+          .limit(1)
+          .single();
+        profile = data;
+      } catch (_) { /* use env var fallbacks */ }
+    }
 
     const templateData = buildTemplateData({ bill, items, customer, vehicle, profile });
     const html = await renderInvoiceHtml(templateData);

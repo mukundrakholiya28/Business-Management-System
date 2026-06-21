@@ -7,7 +7,8 @@ import { useProtectedRoute } from "@/context/AuthContext";
 import { StatusSelect, EmptyState, Modal, PageSkeleton } from "@/components/ui";
 import { formatCurrency, formatDate, getInitials, generateId } from "@/lib/helpers";
 import { loadWorkshopData, saveBillWithItems, deleteVehicle, deleteBill, updateCustomer } from "@/lib/workshop-data";
-import { exportInvoicePDF } from "@/lib/pdf";
+import { exportInvoicePDF, generateInvoicePDF } from "@/lib/pdf";
+import { supabase } from "@/lib/supabase";
 import {
   ArrowLeft, Car, Phone, Mail, MapPin, Receipt,
   Download, Eye, Pencil, Send, ChevronDown, ChevronRight,
@@ -157,6 +158,63 @@ export default function CustomerDetailPage() {
       return;
     }
 
+    const vehicle = vehicles.find((v) => v.id === bill.vehicle_id);
+    const items = billItems.filter((i) => i.bill_id === bill.id);
+
+    let pdfUrl = null;
+    let pdfBase64 = null;
+
+    try {
+      showToast("Generating invoice PDF...");
+      const pdf = await generateInvoicePDF({ bill, items, customer, vehicle });
+      if (pdf) {
+        showToast("Uploading PDF to storage...");
+        const pdfBlob = pdf.output("blob");
+
+        // Convert to base64 for email
+        pdfBase64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result.split(',')[1]);
+          reader.onerror = reject;
+          reader.readAsDataURL(pdfBlob);
+        });
+
+        // Upload to Supabase Storage if supabase is ready
+        if (supabase) {
+          try {
+            // Get user ID
+            const { data: { user } } = await supabase.auth.getUser();
+            const userId = user?.id || "anonymous";
+            const filePath = `${userId}/INV-${bill.bill_number}.pdf`;
+
+            // Try creating bucket in case it doesn't exist
+            await supabase.storage.createBucket('invoices', { public: true }).catch(() => {});
+
+            const { error: uploadError } = await supabase.storage
+              .from('invoices')
+              .upload(filePath, pdfBlob, {
+                contentType: 'application/pdf',
+                upsert: true,
+              });
+
+            if (uploadError) {
+              console.error("Storage upload failed:", uploadError);
+            } else {
+              const { data: urlData } = supabase.storage
+                .from('invoices')
+                .getPublicUrl(filePath);
+              pdfUrl = urlData?.publicUrl;
+            }
+          } catch (storageErr) {
+            console.error("Storage upload error:", storageErr);
+          }
+        }
+      }
+    } catch (pdfErr) {
+      console.error("Failed to generate PDF:", pdfErr);
+      showToast("PDF generation failed, sending messages without PDF attachment...");
+    }
+
     let emailSent = false;
     let emailError = null;
 
@@ -166,9 +224,11 @@ export default function CustomerDetailPage() {
         const { sendInvoiceEmail } = await import("@/lib/email");
         await sendInvoiceEmail({
           bill,
-          items: billItems.filter((i) => i.bill_id === bill.id),
+          items,
           customer,
-          vehicle: vehicles.find((v) => v.id === bill.vehicle_id),
+          vehicle,
+          pdfBase64,
+          pdfUrl,
         });
         emailSent = true;
       } catch (err) {
@@ -184,7 +244,8 @@ export default function CustomerDetailPage() {
         customer.phone_number,
         customer.name,
         `INV-${bill.bill_number}`,
-        formatCurrency(bill.total_amount)
+        formatCurrency(bill.total_amount),
+        pdfUrl
       );
 
       if (emailSent) {
