@@ -52,14 +52,8 @@ export function AuthProvider({ children }) {
     setUser(null);
   };
 
-  const loginAsDemo = () => {
-    setError(null);
-    setUser({ id: "demo-user-id", email: "demo@shreeroyal.com" });
-    setLoading(false);
-  };
-
   return (
-    <AuthContext.Provider value={{ user, loading, error, login, logout, loginAsDemo }}>
+    <AuthContext.Provider value={{ user, loading, error, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
