@@ -151,6 +151,28 @@ export default function CustomerDetailPage() {
     }
   };
 
+  const sendToCustomer = async (bill) => {
+    if (!customer?.phone_number) {
+      showToast("No phone number on file for this customer.");
+      return;
+    }
+
+    try {
+      showToast(`Sending invoice INV-${bill.bill_number} to ${customer.name} via WhatsApp...`);
+      const { sendWhatsApp } = await import("@/lib/whatsapp");
+      const { formatCurrency } = await import("@/lib/helpers");
+      await sendWhatsApp(
+        customer.phone_number,
+        customer.name,
+        `INV-${bill.bill_number}`,
+        formatCurrency(bill.total_amount)
+      );
+      showToast(`Invoice sent successfully via WhatsApp to ${customer.name}!`);
+    } catch (err) {
+      showToast(`Failed to send WhatsApp: ${err.message}`);
+    }
+  };
+
   if (loading || loadingData) {
     return (
       <div className="flex flex-col min-h-screen bg-page">
@@ -348,6 +370,7 @@ export default function CustomerDetailPage() {
                                           <button onClick={() => setSelectedBill(bill)} className="flat-btn-ghost p-1.5" title="View"><Eye size={15} strokeWidth={1.5} /></button>
                                           <button onClick={() => { setEditingBill(bill); setShowBillForm(true); setSelectedBill(null); }} className="flat-btn-ghost p-1.5" title="Edit"><Pencil size={15} strokeWidth={1.5} /></button>
                                           <button onClick={() => exportPDF(bill)} className="flat-btn-ghost p-1.5" title="PDF"><Download size={15} strokeWidth={1.5} /></button>
+                                          <button onClick={() => sendToCustomer(bill)} className="flat-btn-ghost p-1.5 text-accent" title="Send"><Send size={15} strokeWidth={1.5} /></button>
                                           <button onClick={() => setConfirmDeleteBill(bill)} className="flat-btn-ghost p-1.5 text-gray-400 hover:text-red-500" title="Delete"><Trash2 size={15} strokeWidth={1.5} /></button>
                                         </div>
                                       </td>
@@ -379,6 +402,7 @@ export default function CustomerDetailPage() {
                                     <button onClick={() => setSelectedBill(bill)} className="flat-btn-ghost p-1.5" title="View"><Eye size={14} strokeWidth={1.5} /></button>
                                     <button onClick={() => { setEditingBill(bill); setShowBillForm(true); setSelectedBill(null); }} className="flat-btn-ghost p-1.5" title="Edit"><Pencil size={14} strokeWidth={1.5} /></button>
                                     <button onClick={() => exportPDF(bill)} className="flat-btn-ghost p-1.5" title="PDF"><Download size={14} strokeWidth={1.5} /></button>
+                                    <button onClick={() => sendToCustomer(bill)} className="flat-btn-ghost p-1.5 text-accent" title="Send"><Send size={14} strokeWidth={1.5} /></button>
                                     <button onClick={() => setConfirmDeleteBill(bill)} className="flat-btn-ghost p-1.5 text-gray-400 hover:text-red-500" title="Delete"><Trash2 size={14} strokeWidth={1.5} /></button>
                                   </div>
                                 </div>
@@ -413,8 +437,10 @@ export default function CustomerDetailPage() {
           vehicle={allVehicles.find((v) => v.id === selectedBill.vehicle_id)}
           onClose={() => setSelectedBill(null)}
           onExportPDF={() => exportPDF(selectedBill)}
+          onSend={() => sendToCustomer(selectedBill)}
           onEdit={() => { setEditingBill(selectedBill); setShowBillForm(true); setSelectedBill(null); }}
           onStatusChange={(newStatus) => handleStatusChange(selectedBill, newStatus)}
+          showToast={showToast}
         />
       )}
 
@@ -478,7 +504,7 @@ export default function CustomerDetailPage() {
 }
 
 // ── Bill detail modal ──────────────────────────────────────────
-function BillDetailModal({ bill, items, customer, vehicle, onClose, onExportPDF, onEdit, onStatusChange }) {
+function BillDetailModal({ bill, items, customer, vehicle, onClose, onExportPDF, onEdit, onStatusChange, onSend, showToast }) {
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState(null);
 
@@ -488,18 +514,18 @@ function BillDetailModal({ bill, items, customer, vehicle, onClose, onExportPDF,
     try {
       const { sendWhatsApp } = await import("@/lib/whatsapp");
       const { formatCurrency } = await import("@/lib/helpers");
-      sendWhatsApp(
+      await sendWhatsApp(
         customer?.phone_number,
         customer?.name,
         `INV-${bill.bill_number}`,
         formatCurrency(bill.total_amount)
       );
+      showToast?.(`Invoice INV-${bill.bill_number} sent successfully to ${customer?.name}!`);
       setSending(false);
     } catch (err) {
       setSendError(err.message);
       setSending(false);
     }
-  };
   };
 
   return (
@@ -618,6 +644,9 @@ function BillDetailModal({ bill, items, customer, vehicle, onClose, onExportPDF,
       <div className="flex flex-wrap gap-2 mt-4">
         <button onClick={onExportPDF} className="flat-btn"><Download size={14} strokeWidth={1.5} /> PDF</button>
         <button onClick={onEdit} className="flat-btn"><Pencil size={14} strokeWidth={1.5} /> Edit</button>
+        {!(bill.payment_method === "online" && bill.status === "pending") && (
+          <button onClick={onSend} className="flat-btn-primary"><Send size={14} strokeWidth={1.5} /> Send</button>
+        )}
       </div>
     </Modal>
   );
@@ -806,8 +835,8 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, presetCu
           <label className="flat-label block mb-2">Payment Method</label>
           <div className="flex gap-2">
             {[
-              { value: "cash",   label: "💵 Cash",   desc: isEditing ? null : "Status → Pending · WhatsApp sent" },
-              { value: "online", label: "📲 Online", desc: isEditing ? null : "Status → Pending · WhatsApp sent" },
+              { value: "cash",   label: "💵 Cash",   desc: isEditing ? null : "Status → Pending" },
+              { value: "online", label: "📲 Online", desc: isEditing ? null : "Status → Pending" },
             ].map((opt) => (
               <button key={opt.value} type="button" onClick={() => setPaymentMethod(opt.value)}
                 className={`flex-1 rounded-xl border px-4 py-2.5 text-left transition-all ${paymentMethod === opt.value ? "border-amber-400 bg-amber-50 text-amber-800" : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"}`}>

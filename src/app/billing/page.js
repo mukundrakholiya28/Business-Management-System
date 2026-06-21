@@ -178,18 +178,17 @@ export default function BillingPage() {
       return;
     }
 
-    // Send WhatsApp message (opens WhatsApp Web/App)
     try {
-      sendWhatsApp(
+      showToast(`Sending invoice INV-${bill.bill_number} to ${customer.name} via WhatsApp...`);
+      await sendWhatsApp(
         customer.phone_number,
         customer.name,
         `INV-${bill.bill_number}`,
         formatCurrency(bill.total_amount)
-        // TODO: Add invoice PDF URL when available (e.g., deployed URL)
       );
-      showToast(`Opening WhatsApp to send invoice to ${customer.name}`);
+      showToast(`Invoice sent successfully via WhatsApp to ${customer.name}!`);
     } catch (err) {
-      showToast(`Failed to open WhatsApp: ${err.message}`);
+      showToast(`Failed to send WhatsApp: ${err.message}`);
     }
   };
 
@@ -481,6 +480,7 @@ export default function BillingPage() {
           onEdit={() => openEditBillForm(selectedBill)}
           onMarkPaid={() => handleMarkPaid(selectedBill)}
           onStatusChange={(newStatus) => handleStatusChange(selectedBill, newStatus)}
+          showToast={showToast}
         />
       )}
 
@@ -524,7 +524,7 @@ export default function BillingPage() {
   );
 }
 
-function BillDetailModal({ bill, items, customers, vehicles, onClose, onExportPDF, onSend, onEdit, onMarkPaid, onStatusChange }) {
+function BillDetailModal({ bill, items, customers, vehicles, onClose, onExportPDF, onSend, onEdit, onMarkPaid, onStatusChange, showToast }) {
   const customer = customers.find((c) => c.id === bill.customer_id);
   const vehicle = vehicles.find((v) => v.id === bill.vehicle_id);
   const isOnlinePending = bill.payment_method === "online" && bill.status === "pending";
@@ -535,12 +535,13 @@ function BillDetailModal({ bill, items, customers, vehicles, onClose, onExportPD
     setSending(true);
     setSendError(null);
     try {
-      sendWhatsApp(
+      await sendWhatsApp(
         customer?.phone_number,
         customer?.name,
         `INV-${bill.bill_number}`,
         formatCurrency(bill.total_amount)
       );
+      showToast?.(`Invoice INV-${bill.bill_number} sent successfully to ${customer?.name}!`);
       setSending(false);
     } catch (err) {
       setSendError(err.message);
@@ -1064,9 +1065,6 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, onClose,
             <span className="flat-pill font-semibold capitalize bg-amber-50 text-amber-700">
               pending
             </span>
-            {paymentMethod === "online" && (
-              <span className="text-gray-400">— WhatsApp link will open on create</span>
-            )}
           </div>
         )}
 
@@ -1097,11 +1095,7 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, onClose,
             className="flat-btn-primary disabled:opacity-50"
           >
             <Receipt size={14} strokeWidth={1.5} />
-            {isEditing
-              ? "Save Changes"
-              : paymentMethod === "online"
-              ? "Create & Send via WhatsApp"
-              : "Create Invoice"}
+            {isEditing ? "Save Changes" : "Create Invoice"}
           </button>
         </div>
       </div>
