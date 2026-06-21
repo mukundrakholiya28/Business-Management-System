@@ -32,15 +32,24 @@ export function sendWhatsApp(phoneNumber, customerName, invoiceNumber, totalAmou
   // Detect mobile device
   const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   
-  // Select base URL (WhatsApp App for mobile, WhatsApp Web for desktop)
-  const baseUrl = isMobile 
-    ? "https://api.whatsapp.com/send" 
-    : "https://web.whatsapp.com/send";
-  
-  const whatsappUrl = `${baseUrl}?phone=${cleanPhone}&text=${encodedMessage}`;
-  
-  // Open in new tab
-  window.open(whatsappUrl, '_blank');
+  if (isMobile) {
+    // Custom URI scheme forces mobile OS to open native WhatsApp directly bypassing redirect screen
+    const whatsappUrl = `whatsapp://send?phone=${cleanPhone}&text=${encodedMessage}`;
+    
+    // Use location.href instead of window.open to avoid launching blank/empty tabs in mobile browsers or PWAs
+    window.location.href = whatsappUrl;
+
+    // Fallback to HTTPS link if the native app fails to launch after 1.5 seconds (e.g. not installed)
+    setTimeout(() => {
+      if (document.hasFocus()) {
+        window.location.href = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodedMessage}`;
+      }
+    }, 1500);
+  } else {
+    // For desktop, use WhatsApp Web in a new tab
+    const whatsappUrl = `https://web.whatsapp.com/send?phone=${cleanPhone}&text=${encodedMessage}`;
+    window.open(whatsappUrl, '_blank');
+  }
   
   return { success: true };
 }

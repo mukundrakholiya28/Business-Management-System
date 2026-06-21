@@ -73,10 +73,12 @@ if (items.length <= FIRST_PAGE_ROWS) {
     <div class="meta-block">
       <div class="eyebrow">From</div>
       <div class="value">
-        <strong><%= company.name %></strong>
+        <strong><%= company.name %></strong><br/>
         <%= company.address %><br/>
-        <%= company.phone %> &middot; <%= company.email %><br/>
-        GSTIN: <%= company.gstin %>
+        <%= company.phone %> &middot; <%= company.email %>
+        <% if (company.gstin && company.gstin.trim()) { %>
+          <br/>GSTIN: <%= company.gstin %>
+        <% } %>
       </div>
     </div>
     <div class="meta-block">

@@ -157,20 +157,74 @@ export async function POST(request) {
       });
     }
 
-    const { data, error } = await resend.emails.send({
-      from: FROM,
-      to: [to],
-      subject: `Invoice ${invoiceNumber} from Shree Royal Car`,
-      html,
-      attachments,
-    });
-
-    if (error) {
-      console.error("[Resend error]", error);
-      return NextResponse.json({ error: error.message }, { status: 400 });
+    let sendResult;
+    try {
+      sendResult = await resend.emails.send({
+        from: FROM,
+        to: [to],
+        subject: `Invoice ${invoiceNumber} from Shree Royal Car`,
+        html,
+        attachments,
+      });
+    } catch (sendErr) {
+      // Catch network or unexpected JS exceptions and format like a Resend error
+      sendResult = { error: sendErr };
     }
 
-    return NextResponse.json({ success: true, emailId: data?.id });
+    if (sendResult.error) {
+      const errorMsg = sendResult.error.message || "";
+      if (errorMsg.includes("You can only send testing emails to your own email address")) {
+        const match = errorMsg.match(/own email address \(([^)]+)\)/i);
+        if (match && match[1]) {
+          const authorizedEmail = match[1];
+          console.warn(`[Resend Sandbox] Redirecting email to authorized address: ${authorizedEmail} (originally to: ${to})`);
+
+          // Premium sandbox warning banner styled to match the invoice design
+          const warningBanner = `
+    <!-- Sandbox Warning -->
+    <div style="background-color:#FFFBEB;border-bottom:1px solid #F59E0B;padding:16px 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;color:#B45309;line-height:1.5;">
+      <strong style="font-size:14px;">⚠️ Resend Sandbox Redirect</strong><br/>
+      This email was intended for <strong>${to}</strong>, but has been redirected to <strong>${authorizedEmail}</strong> because this Resend account is running in development/sandbox mode. To send to other recipients, please verify a domain at <a href="https://resend.com/domains" style="color:#B45309;font-weight:600;text-decoration:underline;">resend.com/domains</a>.
+    </div>
+          `;
+
+          // Insert warning banner right inside the card container above the header
+          let updatedHtml = html;
+          const containerStart = 'rgba(0,0,0,0.08);">';
+          if (html.includes(containerStart)) {
+            updatedHtml = html.replace(containerStart, `${containerStart}\n${warningBanner}`);
+          } else {
+            updatedHtml = warningBanner + html;
+          }
+
+          const retryResult = await resend.emails.send({
+            from: FROM,
+            to: [authorizedEmail],
+            subject: `[SANDBOX REDIRECT] Invoice ${invoiceNumber} to ${customerName}`,
+            html: updatedHtml,
+            attachments,
+          });
+
+          if (!retryResult.error) {
+            return NextResponse.json({
+              success: true,
+              emailId: retryResult.data?.id,
+              redirected: true,
+              authorizedEmail: authorizedEmail,
+              message: `Email was redirected to ${authorizedEmail} because Resend is in testing mode.`
+            });
+          } else {
+            console.error("[Resend Sandbox retry error]", retryResult.error);
+            return NextResponse.json({ error: retryResult.error.message }, { status: 400 });
+          }
+        }
+      }
+
+      console.error("[Resend error]", sendResult.error);
+      return NextResponse.json({ error: sendResult.error.message }, { status: 400 });
+    }
+
+    return NextResponse.json({ success: true, emailId: sendResult.data?.id });
   } catch (err) {
     console.error("[send-email route error]", err);
     return NextResponse.json({ error: err.message }, { status: 500 });

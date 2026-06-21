@@ -88,3 +88,41 @@ CREATE INDEX IF NOT EXISTS idx_business_profile_user ON business_profile (user_i
 --   1. Deploy the updated workshop-data.js (which now passes user_id on insert)
 --   2. The Supabase anon key + RLS handles all filtering automatically
 --   3. No server-side secret key needed — RLS enforces isolation at DB level
+
+-- ── 7. Storage Bucket & Policies for Invoices ────────────────
+-- Run this to create the 'invoices' bucket and configure RLS policies for uploads
+
+-- Create the bucket
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('invoices', 'invoices', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- Drop existing policies if they exist to avoid conflicts
+DROP POLICY IF EXISTS "Allow authenticated uploads" ON storage.objects;
+DROP POLICY IF EXISTS "Allow public read access" ON storage.objects;
+DROP POLICY IF EXISTS "Allow users to delete their own invoices" ON storage.objects;
+
+-- Policy to allow authenticated users to upload to their own folder inside 'invoices'
+-- The folder structure is: invoices/<user_id>/INV-xxx.pdf
+CREATE POLICY "Allow authenticated uploads" ON storage.objects
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    bucket_id = 'invoices' 
+    AND (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+-- Policy to allow anyone (public) to view the invoices via the public URL
+CREATE POLICY "Allow public read access" ON storage.objects
+  FOR SELECT
+  TO public
+  USING (bucket_id = 'invoices');
+
+-- Policy to allow authenticated users to delete their own invoices
+CREATE POLICY "Allow users to delete their own invoices" ON storage.objects
+  FOR DELETE
+  TO authenticated
+  USING (
+    bucket_id = 'invoices' 
+    AND (storage.foldername(name))[1] = auth.uid()::text
+  );

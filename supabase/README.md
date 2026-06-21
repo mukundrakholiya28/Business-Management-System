@@ -33,6 +33,7 @@ This migration will:
 - Enable RLS on all tables
 - Create policies that automatically filter data by the authenticated user
 - Add database indexes for performance
+- **Create the `invoices` storage bucket** and set policies so authenticated users can upload and delete their own files, and the public can view them.
 
 ### 3. Back-fill Existing Data (if applicable)
 
@@ -110,6 +111,12 @@ After running the migration, test that RLS is working:
 **Cause:** Existing data doesn't have `user_id` set.
 
 **Fix:** Run the back-fill queries above to assign existing data to users.
+
+### Storage Upload Fails / "Bucket not found" / StorageApiError
+
+**Cause:** The `invoices` storage bucket doesn't exist in your Supabase project, or the proper permissions are missing.
+
+**Fix:** Ensure you copy and run the new **Section 7** of `supabase/rls-migration.sql` in your Supabase SQL Editor. This script automatically creates the `invoices` bucket and sets the security rules to allow secure authenticated uploads and public readability.
 
 ### Performance Issues
 

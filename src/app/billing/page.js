@@ -216,7 +216,15 @@ export default function BillingPage() {
               });
 
             if (uploadError) {
-              console.error("Storage upload failed:", uploadError);
+              if (uploadError.message?.includes("Bucket not found")) {
+                console.warn(
+                  "Supabase Storage bucket 'invoices' not found. " +
+                  "Please create the bucket in your Supabase dashboard or run the storage SQL schema. " +
+                  "Full error:", uploadError
+                );
+              } else {
+                console.error("Storage upload failed:", uploadError);
+              }
             } else {
               const { data: urlData } = supabase.storage
                 .from('invoices')
@@ -233,15 +241,15 @@ export default function BillingPage() {
       showToast("PDF generation failed, sending messages without PDF attachment...");
     }
 
-    let emailSent = false;
+    let emailSent = null;
     let emailError = null;
 
     if (customer?.email) {
       try {
         showToast("Sending invoice email...");
         const { sendInvoiceEmail } = await import("@/lib/email");
-        await sendInvoiceEmail({ bill, items, customer, vehicle, pdfBase64, pdfUrl });
-        emailSent = true;
+        const resData = await sendInvoiceEmail({ bill, items, customer, vehicle, pdfBase64, pdfUrl });
+        emailSent = resData;
       } catch (err) {
         emailError = err.message;
         console.error("Failed to send email:", err);
@@ -258,7 +266,11 @@ export default function BillingPage() {
       );
 
       if (emailSent) {
-        showToast(`Email sent & WhatsApp opened for ${customer.name}`);
+        if (emailSent.redirected) {
+          showToast(`Email redirected to sandbox (${emailSent.authorizedEmail}) & WhatsApp opened`);
+        } else {
+          showToast(`Email sent & WhatsApp opened for ${customer.name}`);
+        }
       } else if (emailError) {
         showToast(`WhatsApp opened, but email failed: ${emailError}`);
       } else {

@@ -6,7 +6,7 @@ import Navbar from "@/components/Navbar";
 import { useProtectedRoute } from "@/context/AuthContext";
 import { StatusSelect, EmptyState, Modal, PageSkeleton } from "@/components/ui";
 import { formatCurrency, formatDate, getInitials, generateId } from "@/lib/helpers";
-import { loadWorkshopData, saveBillWithItems, deleteVehicle, deleteBill, updateCustomer } from "@/lib/workshop-data";
+import { loadWorkshopData, saveBillWithItems, deleteVehicle, deleteBill, updateCustomer, saveVehicle } from "@/lib/workshop-data";
 import { exportInvoicePDF, generateInvoicePDF } from "@/lib/pdf";
 import { supabase } from "@/lib/supabase";
 import {
@@ -36,6 +36,8 @@ export default function CustomerDetailPage() {
   const [confirmDeleteBill, setConfirmDeleteBill]       = useState(null);
   const [toast, setToast]                     = useState(null);
   const [showEditCustomer, setShowEditCustomer] = useState(false);
+  const [showVehicleForm, setShowVehicleForm] = useState(false);
+  const [editingVehicle, setEditingVehicle]   = useState(null);
 
   const showToast = (msg) => {
     setToast(msg);
@@ -138,6 +140,19 @@ export default function CustomerDetailPage() {
     }
   };
 
+  const handleSaveVehicle = (savedVehicle, isEditing) => {
+    if (isEditing) {
+      setVehicles((prev) => prev.map((v) => (v.id === savedVehicle.id ? savedVehicle : v)));
+      setAllVehicles((prev) => prev.map((v) => (v.id === savedVehicle.id ? savedVehicle : v)));
+      showToast("Vehicle updated");
+    } else {
+      setVehicles((prev) => [savedVehicle, ...prev]);
+      setAllVehicles((prev) => [savedVehicle, ...prev]);
+      setExpandedVehicle(savedVehicle.id);
+      showToast("Vehicle added");
+    }
+  };
+
   const handleStatusChange = async (bill, newStatus) => {
     if (bill.status === newStatus) return;
     try {
@@ -198,7 +213,15 @@ export default function CustomerDetailPage() {
               });
 
             if (uploadError) {
-              console.error("Storage upload failed:", uploadError);
+              if (uploadError.message?.includes("Bucket not found")) {
+                console.warn(
+                  "Supabase Storage bucket 'invoices' not found. " +
+                  "Please create the bucket in your Supabase dashboard or run the storage SQL schema. " +
+                  "Full error:", uploadError
+                );
+              } else {
+                console.error("Storage upload failed:", uploadError);
+              }
             } else {
               const { data: urlData } = supabase.storage
                 .from('invoices')
@@ -215,14 +238,14 @@ export default function CustomerDetailPage() {
       showToast("PDF generation failed, sending messages without PDF attachment...");
     }
 
-    let emailSent = false;
+    let emailSent = null;
     let emailError = null;
 
     if (customer?.email) {
       try {
         showToast("Sending invoice email...");
         const { sendInvoiceEmail } = await import("@/lib/email");
-        await sendInvoiceEmail({
+        const resData = await sendInvoiceEmail({
           bill,
           items,
           customer,
@@ -230,7 +253,7 @@ export default function CustomerDetailPage() {
           pdfBase64,
           pdfUrl,
         });
-        emailSent = true;
+        emailSent = resData;
       } catch (err) {
         emailError = err.message;
         console.error("Failed to send email:", err);
@@ -249,7 +272,11 @@ export default function CustomerDetailPage() {
       );
 
       if (emailSent) {
-        showToast(`Email sent & WhatsApp opened for ${customer.name}`);
+        if (emailSent.redirected) {
+          showToast(`Email redirected to sandbox (${emailSent.authorizedEmail}) & WhatsApp opened`);
+        } else {
+          showToast(`Email sent & WhatsApp opened for ${customer.name}`);
+        }
       } else if (emailError) {
         showToast(`WhatsApp opened, but email failed: ${emailError}`);
       } else {
@@ -354,6 +381,20 @@ export default function CustomerDetailPage() {
             </div>
           </div>
 
+          {/* Section Header */}
+          <div className="flex items-center justify-between mb-4 animate-fade-in">
+            <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Vehicles & Invoices</h2>
+            <button
+              onClick={() => {
+                setEditingVehicle(null);
+                setShowVehicleForm(true);
+              }}
+              className="flat-btn-primary text-xs"
+            >
+              <Plus size={13} strokeWidth={1.5} /> Add Vehicle
+            </button>
+          </div>
+
           {/* Vehicles + billing history */}
           <div className="space-y-4">
             {vehicles.length === 0 ? (
@@ -400,6 +441,17 @@ export default function CustomerDetailPage() {
                           }}
                         >
                           <Plus size={13} strokeWidth={1.5} /> New Bill
+                        </button>
+                        <button
+                          className="flat-btn-ghost p-1.5 text-gray-500 hover:text-gray-900 shrink-0"
+                          title="Edit vehicle"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingVehicle(vehicle);
+                            setShowVehicleForm(true);
+                          }}
+                        >
+                          <Pencil size={14} strokeWidth={1.5} />
                         </button>
                         <button
                           className="flat-btn-ghost p-1.5 text-gray-400 hover:text-red-500 shrink-0"
@@ -512,6 +564,18 @@ export default function CustomerDetailPage() {
           customer={customer}
           onClose={() => setShowEditCustomer(false)}
           onSave={handleEditCustomer}
+        />
+      )}
+
+      {showVehicleForm && (
+        <VehicleModal
+          customerId={id}
+          vehicle={editingVehicle}
+          onClose={() => {
+            setShowVehicleForm(false);
+            setEditingVehicle(null);
+          }}
+          onSave={handleSaveVehicle}
         />
       )}
 
@@ -1000,6 +1064,121 @@ function CustomerEditModal({ customer, onClose, onSave }) {
           <button onClick={handleSubmit} className="flat-btn-primary">Save Changes</button>
         </div>
       </div>
+    </Modal>
+  );
+}
+
+function VehicleModal({ customerId, vehicle, onClose, onSave }) {
+  const isEditing = Boolean(vehicle);
+  const [vehicleNumber, setVehicleNumber] = useState(vehicle?.vehicle_number || "");
+  const [make, setMake] = useState(vehicle?.make || "");
+  const [model, setModel] = useState(vehicle?.model || "");
+  const [year, setYear] = useState(vehicle?.year || "");
+  const [color, setColor] = useState(vehicle?.color || "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    if (!vehicleNumber.trim()) {
+      setError("Vehicle number is required");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const saved = await saveVehicle(
+        {
+          id: vehicle?.id,
+          customer_id: customerId,
+          vehicle_number: vehicleNumber,
+          make: make || null,
+          model: model || null,
+          year: year ? Number(year) : null,
+          color: color || null,
+          original_vehicle_number: vehicle?.vehicle_number,
+        },
+        isEditing
+      );
+      onSave(saved, isEditing);
+      onClose();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title={isEditing ? "Edit Vehicle" : "Add Vehicle"} onClose={onClose}>
+      <form onSubmit={handleSave} className="space-y-4">
+        {error && (
+          <div className="bg-red-50 text-red-600 p-3 rounded-xl text-xs font-medium border border-red-100">
+            {error}
+          </div>
+        )}
+        <div>
+          <label className="flat-label block mb-1">Vehicle Number *</label>
+          <input
+            type="text"
+            required
+            value={vehicleNumber}
+            onChange={(e) => setVehicleNumber(e.target.value.toUpperCase())}
+            placeholder="e.g. GJ01AB1234"
+            className="flat-input"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="flat-label block mb-1">Make</label>
+            <input
+              type="text"
+              value={make}
+              onChange={(e) => setMake(e.target.value)}
+              placeholder="e.g. Hyundai"
+              className="flat-input"
+            />
+          </div>
+          <div>
+            <label className="flat-label block mb-1">Model</label>
+            <input
+              type="text"
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              placeholder="e.g. i20"
+              className="flat-input"
+            />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="flat-label block mb-1">Year</label>
+            <input
+              type="number"
+              value={year}
+              onChange={(e) => setYear(e.target.value)}
+              placeholder="e.g. 2021"
+              className="flat-input"
+            />
+          </div>
+          <div>
+            <label className="flat-label block mb-1">Color</label>
+            <input
+              type="text"
+              value={color}
+              onChange={(e) => setColor(e.target.value)}
+              placeholder="e.g. White"
+              className="flat-input"
+            />
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 pt-2">
+          <button type="button" onClick={onClose} className="flat-btn">Cancel</button>
+          <button type="submit" disabled={saving} className="flat-btn-primary">
+            {saving ? "Saving…" : "Save Vehicle"}
+          </button>
+        </div>
+      </form>
     </Modal>
   );
 }

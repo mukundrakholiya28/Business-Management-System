@@ -117,6 +117,60 @@ export async function saveCustomerWithVehicles({ customer, vehicles }) {
   return { customer: createdCustomer, vehicles: createdVehicles || [] };
 }
 
+export async function saveVehicle(vehicle, isEditing) {
+  if (!isSupabaseReady()) throw new Error("Supabase is not configured.");
+  const userId = await getUserId();
+
+  if (!vehicle.customer_id) throw new Error("Customer ID is required.");
+  if (!vehicle.vehicle_number?.trim()) throw new Error("Vehicle number is required.");
+
+  const cleanNumber = vehicle.vehicle_number.trim().toUpperCase();
+
+  // Check duplicate ONLY if we changed the vehicle number
+  if (!isEditing || (isEditing && cleanNumber !== vehicle.original_vehicle_number)) {
+    const { data: existingVehicles, error: lookupError } = await supabase
+      .from("vehicles")
+      .select("id, vehicle_number")
+      .eq("vehicle_number", cleanNumber);
+
+    if (lookupError) throw new Error(lookupError.message);
+    if (existingVehicles?.length && (!isEditing || existingVehicles[0].id !== vehicle.id)) {
+      throw new Error(`Vehicle number ${cleanNumber} is already registered.`);
+    }
+  }
+
+  const payload = {
+    customer_id:    vehicle.customer_id,
+    user_id:        userId,
+    vehicle_number: cleanNumber,
+    make:           vehicle.make?.trim()  || null,
+    model:          vehicle.model?.trim() || null,
+    year:           vehicle.year ? Number(vehicle.year) : null,
+    color:          vehicle.color?.trim() || null,
+  };
+
+  if (isEditing) {
+    const { data: updatedVehicle, error: vehicleError } = await supabase
+      .from("vehicles")
+      .update(payload)
+      .eq("id", vehicle.id)
+      .select("*")
+      .single();
+
+    if (vehicleError) throw new Error(vehicleError.message);
+    return updatedVehicle;
+  } else {
+    const { data: createdVehicle, error: vehicleError } = await supabase
+      .from("vehicles")
+      .insert([payload])
+      .select("*")
+      .single();
+
+    if (vehicleError) throw new Error(vehicleError.message);
+    return createdVehicle;
+  }
+}
+
 // ─── Bills ────────────────────────────────────────────────────────────────────
 
 export async function saveBillWithItems({ bill, items, isEditing }) {
