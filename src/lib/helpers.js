@@ -47,6 +47,8 @@ export function getStatusStyle(status) {
       return { bg: "rgba(109,181,160,0.15)", color: "#4a9e80" };
     case "pending":
       return { bg: "rgba(224,180,116,0.15)", color: "#c49340" };
+    case "partially_paid":
+      return { bg: "rgba(59,130,246,0.15)", color: "#3b82f6" };
     case "draft":
       return { bg: "rgba(116,168,224,0.15)", color: "#5a8cc0" };
     case "cancelled":

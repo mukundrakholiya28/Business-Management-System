@@ -191,6 +191,23 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
         }))
     : null;
 
+  // Sanitize and align status and paid_amount
+  let status = bill.status;
+  let paid_amount = Number(bill.paid_amount || 0);
+  if (status === "paid") {
+    paid_amount = Number(bill.total_amount);
+  } else if (status === "pending" || status === "draft" || status === "cancelled") {
+    paid_amount = 0;
+  } else if (status === "partially_paid") {
+    if (paid_amount <= 0) {
+      paid_amount = 0;
+      status = "pending";
+    } else if (paid_amount >= Number(bill.total_amount)) {
+      paid_amount = Number(bill.total_amount);
+      status = "paid";
+    }
+  }
+
   if (isEditing) {
     const { data: updatedBills, error: updateError } = await supabase
       .from("bills")
@@ -201,8 +218,9 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
         tax_amount:     bill.tax_amount,
         discount:       bill.discount,
         total_amount:   bill.total_amount,
-        status:         bill.status,
+        status:         status,
         payment_method: bill.payment_method || null,
+        paid_amount:    paid_amount,
         notes:          bill.notes,
         pdf_url:        bill.pdf_url || null,
       })
@@ -227,7 +245,7 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
     }
 
     return {
-      bill:  updatedBills?.[0] || bill,
+      bill:  updatedBills?.[0] || { ...bill, status, paid_amount },
       items: itemPayload ? itemPayload.map((i) => ({ ...i, bill_id: bill.id })) : [],
     };
   }
@@ -237,7 +255,13 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
   const { id: _id, bill_number: _bn, gst_enabled: _ge, gst_rate: _gr, ...billPayload } = bill;
   const { data: createdBill, error: createError } = await supabase
     .from("bills")
-    .insert([{ ...billPayload, user_id: userId, payment_method: bill.payment_method || null }])
+    .insert([{
+      ...billPayload,
+      status,
+      paid_amount,
+      user_id: userId,
+      payment_method: bill.payment_method || null
+    }])
     .select("*")
     .single();
   if (createError) throw new Error(createError.message);

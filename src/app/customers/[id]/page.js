@@ -74,8 +74,17 @@ export default function CustomerDetailPage() {
   }, [vehicles, bills]);
 
   // Summary stats
-  const totalSpent = bills.filter((b) => b.status === "paid").reduce((s, b) => s + b.total_amount, 0);
-  const pendingAmt  = bills.filter((b) => b.status === "pending").reduce((s, b) => s + b.total_amount, 0);
+  const totalSpent = bills.reduce((s, b) => {
+    if (b.status === "paid") return s + Number(b.total_amount);
+    if (b.status === "partially_paid") return s + Number(b.paid_amount || 0);
+    return s;
+  }, 0);
+
+  const pendingAmt = bills.reduce((s, b) => {
+    if (b.status === "pending") return s + Number(b.total_amount);
+    if (b.status === "partially_paid") return s + (Number(b.total_amount) - Number(b.paid_amount || 0));
+    return s;
+  }, 0);
 
   const exportPDF = async (bill) => {
     let pdfUrl = bill.pdf_url || null;
@@ -142,108 +151,117 @@ export default function CustomerDetailPage() {
 
   const handleSaveBill = async ({ bill, items, isEditing }) => {
     try {
-      showToast(isEditing ? "Saving changes & updating PDF..." : "Saving invoice & generating PDF...");
+      showToast(isEditing ? "Saving changes..." : "Saving invoice...");
       
       const vehicle = allVehicles.find((v) => v.id === bill.vehicle_id);
 
-      let pdfUrl = bill.pdf_url || null;
-
       if (isEditing) {
-        // Edit flow: generate PDF, upload it (overwriting old one), then save bill
-        try {
-          const pdf = await generateInvoicePDF({ bill, items, customer, vehicle });
-          if (pdf && supabase) {
-            const pdfBlob = pdf.output("blob");
-            const { data: { user } } = await supabase.auth.getUser();
-            const userId = user?.id || "anonymous";
-            const filePath = `${userId}/INV-${bill.bill_number}.pdf`;
-
-            await supabase.storage.createBucket('invoices', { public: true }).catch(() => {});
-            const { error: uploadError } = await supabase.storage
-              .from('invoices')
-              .upload(filePath, pdfBlob, {
-                contentType: 'application/pdf',
-                upsert: true,
-                cacheControl: '0',
-              });
-
-            if (uploadError) {
-              console.error("Storage upload failed on save:", uploadError);
-            } else {
-              const { data: urlData } = supabase.storage
-                .from('invoices')
-                .getPublicUrl(filePath);
-              pdfUrl = urlData?.publicUrl;
-              console.log("PDF uploaded/replaced successfully on save:", pdfUrl);
-            }
-          }
-        } catch (pdfErr) {
-          console.error("Auto PDF generation/upload failed on save:", pdfErr);
-        }
-
-        const billWithPdf = { ...bill, pdf_url: pdfUrl };
-        const saved = await saveBillWithItems({ bill: billWithPdf, items, isEditing });
+        // Edit flow:
+        // 1. Save DB record immediately
+        const saved = await saveBillWithItems({ bill, items, isEditing });
         const nextBill  = saved.bill;
         const nextItems = saved.items || [];
 
+        // 2. Instantly update UI and close modal
         setBills((prev) => prev.map((b) => (b.id === nextBill.id ? nextBill : b)));
         setBillItems((prev) => {
           const remaining = prev.filter((i) => i.bill_id !== nextBill.id);
           return [...remaining, ...nextItems];
         });
         setSelectedBill(nextBill);
+        setShowBillForm(false);
+        setEditingBill(null);
+        showToast("Invoice updated");
+
+        // 3. Generate & upload PDF in the background
+        (async () => {
+          try {
+            const pdf = await generateInvoicePDF({ bill: nextBill, items: nextItems, customer, vehicle });
+            if (pdf && supabase) {
+              const pdfBlob = pdf.output("blob");
+              const { data: { user } } = await supabase.auth.getUser();
+              const userId = user?.id || "anonymous";
+              const filePath = `${userId}/INV-${nextBill.bill_number}.pdf`;
+
+              await supabase.storage.createBucket('invoices', { public: true }).catch(() => {});
+              const { error: uploadError } = await supabase.storage
+                .from('invoices')
+                .upload(filePath, pdfBlob, {
+                  contentType: 'application/pdf',
+                  upsert: true,
+                  cacheControl: '0',
+                });
+
+              if (!uploadError) {
+                const { data: urlData } = supabase.storage.from('invoices').getPublicUrl(filePath);
+                const pdfUrl = urlData?.publicUrl;
+                if (pdfUrl) {
+                  const billWithPdf = { ...nextBill, pdf_url: pdfUrl };
+                  const updatedSaved = await saveBillWithItems({ bill: billWithPdf, items: undefined, isEditing: true });
+                  const finalBill = updatedSaved.bill;
+                  setBills((prev) => prev.map((b) => (b.id === finalBill.id ? finalBill : b)));
+                  setSelectedBill((prev) => prev?.id === finalBill.id ? finalBill : prev);
+                  console.log("Background PDF generation & upload complete:", pdfUrl);
+                }
+              }
+            }
+          } catch (pdfErr) {
+            console.error("Background PDF generation failed:", pdfErr.message);
+          }
+        })();
+
       } else {
         // Create flow:
-        // 1. Save bill first without PDF to let DB generate serial bill_number
+        // 1. Save DB record immediately to get serial bill_number
         const saved = await saveBillWithItems({ bill, items, isEditing });
-        let nextBill = saved.bill;
+        const nextBill = saved.bill;
         const nextItems = saved.items || [];
 
-        // 2. Generate and upload PDF now that we have the valid bill_number
-        try {
-          const pdf = await generateInvoicePDF({ bill: nextBill, items: nextItems, customer, vehicle });
-          if (pdf && supabase) {
-            const pdfBlob = pdf.output("blob");
-            const { data: { user } } = await supabase.auth.getUser();
-            const userId = user?.id || "anonymous";
-            const filePath = `${userId}/INV-${nextBill.bill_number}.pdf`;
-
-            await supabase.storage.createBucket('invoices', { public: true }).catch(() => {});
-            const { error: uploadError } = await supabase.storage
-              .from('invoices')
-              .upload(filePath, pdfBlob, {
-                contentType: 'application/pdf',
-                upsert: true,
-                cacheControl: '0',
-              });
-
-            if (uploadError) {
-              console.error("Storage upload failed on save:", uploadError);
-            } else {
-              const { data: urlData } = supabase.storage
-                .from('invoices')
-                .getPublicUrl(filePath);
-              pdfUrl = urlData?.publicUrl;
-              console.log("PDF uploaded successfully on save:", pdfUrl);
-
-              // 3. Update the DB record with the pdf_url
-              const billWithPdf = { ...nextBill, pdf_url: pdfUrl };
-              const updatedSaved = await saveBillWithItems({ bill: billWithPdf, items: undefined, isEditing: true });
-              nextBill = updatedSaved.bill;
-            }
-          }
-        } catch (pdfErr) {
-          console.error("Auto PDF generation/upload failed on save:", pdfErr);
-        }
-
+        // 2. Instantly update UI and close modal
         setBills((prev) => [nextBill, ...prev]);
         setBillItems((prev) => [...prev, ...nextItems]);
         setSelectedBill(nextBill);
-      }
+        setShowBillForm(false);
+        setEditingBill(null);
+        showToast("Invoice created successfully");
 
-      setShowBillForm(false);
-      setEditingBill(null);
-      showToast(isEditing ? "Invoice updated & PDF saved" : "Invoice created & PDF saved");
+        // 3. Generate & upload PDF in the background
+        (async () => {
+          try {
+            const pdf = await generateInvoicePDF({ bill: nextBill, items: nextItems, customer, vehicle });
+            if (pdf && supabase) {
+              const pdfBlob = pdf.output("blob");
+              const { data: { user } } = await supabase.auth.getUser();
+              const userId = user?.id || "anonymous";
+              const filePath = `${userId}/INV-${nextBill.bill_number}.pdf`;
+
+              await supabase.storage.createBucket('invoices', { public: true }).catch(() => {});
+              const { error: uploadError } = await supabase.storage
+                .from('invoices')
+                .upload(filePath, pdfBlob, {
+                  contentType: 'application/pdf',
+                  upsert: true,
+                  cacheControl: '0',
+                });
+
+              if (!uploadError) {
+                const { data: urlData } = supabase.storage.from('invoices').getPublicUrl(filePath);
+                const pdfUrl = urlData?.publicUrl;
+                if (pdfUrl) {
+                  const billWithPdf = { ...nextBill, pdf_url: pdfUrl };
+                  const updatedSaved = await saveBillWithItems({ bill: billWithPdf, items: undefined, isEditing: true });
+                  const finalBill = updatedSaved.bill;
+                  setBills((prev) => prev.map((b) => (b.id === finalBill.id ? finalBill : b)));
+                  setSelectedBill((prev) => prev?.id === finalBill.id ? finalBill : prev);
+                  console.log("Background PDF generation & upload complete:", pdfUrl);
+                }
+              }
+            }
+          } catch (pdfErr) {
+            console.error("Background PDF generation failed:", pdfErr.message);
+          }
+        })();
+      }
     } catch (err) {
       showToast(err.message);
     }
@@ -299,6 +317,12 @@ export default function CustomerDetailPage() {
 
   const handleStatusChange = async (bill, newStatus) => {
     if (bill.status === newStatus) return;
+    if (newStatus === "partially_paid") {
+      setEditingBill(bill);
+      setShowBillForm(true);
+      setSelectedBill(null);
+      return;
+    }
     try {
       const saved = await saveBillWithItems({
         bill: { ...bill, status: newStatus },
@@ -542,7 +566,11 @@ export default function CustomerDetailPage() {
               vehicles.map((vehicle, vIdx) => {
                 const vehicleBills = billsByVehicle[vehicle.id] || [];
                 const isExpanded   = expandedVehicle === vehicle.id || vehicles.length === 1;
-                const vehicleTotal = vehicleBills.filter((b) => b.status === "paid").reduce((s, b) => s + b.total_amount, 0);
+                const vehicleTotal = vehicleBills.reduce((s, b) => {
+                  if (b.status === "paid") return s + Number(b.total_amount);
+                  if (b.status === "partially_paid") return s + Number(b.paid_amount || 0);
+                  return s;
+                }, 0);
 
                 return (
                   <div key={vehicle.id} className="flat-card p-0 overflow-hidden animate-fade-in">
@@ -642,7 +670,17 @@ export default function CustomerDetailPage() {
                                           onChange={(newStatus) => handleStatusChange(bill, newStatus)}
                                         />
                                       </td>
-                                      <td className="py-3 px-5 text-right font-semibold text-gray-900 tabular-nums">{formatCurrency(bill.total_amount)}</td>
+                                      <td className="py-3 px-5 text-right font-semibold text-gray-900 tabular-nums">
+                                        {bill.status === "partially_paid" ? (
+                                          <div className="flex flex-col items-end text-xs font-normal">
+                                            <span className="text-gray-900 font-semibold text-sm">{formatCurrency(bill.total_amount)}</span>
+                                            <span className="text-[10px] text-green-600">Paid: {formatCurrency(bill.paid_amount)}</span>
+                                            <span className="text-[10px] text-amber-600 font-medium">Remaining: {formatCurrency(Math.max(0, bill.total_amount - bill.paid_amount))}</span>
+                                          </div>
+                                        ) : (
+                                          formatCurrency(bill.total_amount)
+                                        )}
+                                      </td>
                                       <td className="py-3 px-5 text-right whitespace-nowrap">
                                         <div className="flex items-center justify-end gap-0.5">
                                           <button onClick={() => setSelectedBill(bill)} className="flat-btn-ghost p-1.5" title="View"><Eye size={15} strokeWidth={1.5} /></button>
@@ -674,7 +712,17 @@ export default function CustomerDetailPage() {
                                       <p className="text-[10px] text-gray-400">{formatDate(bill.created_at)}</p>
                                       {bill.notes && <p className="text-[10px] text-gray-500 mt-0.5">{bill.notes}</p>}
                                     </div>
-                                    <span className="text-sm font-bold text-gray-900 tabular-nums">{formatCurrency(bill.total_amount)}</span>
+                                    <span className="text-sm font-bold text-gray-900 tabular-nums text-right">
+                                      {bill.status === "partially_paid" ? (
+                                        <span className="flex flex-col items-end text-xs font-normal">
+                                          <span className="text-gray-900 font-bold text-sm">{formatCurrency(bill.total_amount)}</span>
+                                          <span className="text-[10px] text-green-600">Paid: {formatCurrency(bill.paid_amount)}</span>
+                                          <span className="text-[10px] text-amber-600 font-medium">Remaining: {formatCurrency(Math.max(0, bill.total_amount - bill.paid_amount))}</span>
+                                        </span>
+                                      ) : (
+                                        formatCurrency(bill.total_amount)
+                                      )}
+                                    </span>
                                   </div>
                                   <div className="flex items-center justify-end gap-1 border-t border-gray-50/50 pt-2">
                                     <button onClick={() => setSelectedBill(bill)} className="flat-btn-ghost p-1.5" title="View"><Eye size={14} strokeWidth={1.5} /></button>
@@ -895,8 +943,19 @@ function BillDetailModal({ bill, items, customer, vehicle, onClose, onExportPDF,
         </div>
         <div className="flat-divider" />
         <div className="flex justify-between text-base font-bold text-gray-900 mt-2">
-          <span>Total</span><span>{formatCurrency(bill.total_amount)}</span>
+          <span>Total Amount</span><span>{formatCurrency(bill.total_amount)}</span>
         </div>
+        {bill.paid_amount > 0 && (
+          <>
+            <div className="flex justify-between text-sm text-gray-500 mt-1">
+              <span>Amount Paid</span><span>{formatCurrency(bill.paid_amount)}</span>
+            </div>
+            <div className="flat-divider my-1.5" />
+            <div className="flex justify-between text-sm font-bold text-blue-600">
+              <span>Amount Remaining</span><span>{formatCurrency(Math.max(0, bill.total_amount - bill.paid_amount))}</span>
+            </div>
+          </>
+        )}
         <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
           <div className="flex items-center gap-2">
             <span className="text-xs text-gray-400">Status</span>
@@ -952,9 +1011,9 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
       : [{ description: "", quantity: 1, unit_price: 0 }]
   );
   const [discount, setDiscount]         = useState(bill?.discount || 0);
+  const [paidAmount, setPaidAmount]     = useState(bill?.paid_amount || 0);
   const [notes, setNotes]               = useState(bill?.notes    || "");
   const [status, setStatus]             = useState(bill?.status   || "draft");
-  const [paymentMethod, setPaymentMethod] = useState(bill?.payment_method || "cash");
   const [gstEnabled, setGstEnabled]     = useState(bill?.tax_amount > 0 ?? true);
   const [gstRate, setGstRate]           = useState(bill?.gst_rate ?? 18);
 
@@ -1013,16 +1072,40 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
   const taxAmount   = gstEnabled ? Math.round(subtotal * (gstRate / 100) * 100) / 100 : 0;
   const totalAmount = subtotal + taxAmount - discount;
 
+  useEffect(() => {
+    if (status !== "draft" && status !== "cancelled") {
+      if (paidAmount >= totalAmount && totalAmount > 0) {
+        setStatus("paid");
+      } else if (paidAmount > 0) {
+        setStatus("partially_paid");
+      } else {
+        setStatus("pending");
+      }
+    }
+  }, [paidAmount, totalAmount]);
+
   const derivedStatus = () => "pending";
 
   const buildBill = (overrideStatus) => {
     const billId     = bill?.id || generateId();
     const billNumber = bill?.bill_number || Math.max(1000, ...bills.map((b) => b.bill_number)) + 1;
+    
+    let finalStatus = overrideStatus;
+    if (finalStatus === "paid" || finalStatus === "partially_paid" || finalStatus === "pending") {
+      if (paidAmount >= totalAmount) {
+        finalStatus = "paid";
+      } else if (paidAmount > 0) {
+        finalStatus = "partially_paid";
+      } else {
+        finalStatus = "pending";
+      }
+    }
+
     return {
       id: billId, bill_number: billNumber, customer_id: customerId, vehicle_id: vehicleId,
       subtotal, tax_amount: taxAmount, gst_enabled: gstEnabled, gst_rate: gstEnabled ? gstRate : 0,
-      discount, total_amount: totalAmount, status: overrideStatus, payment_method: paymentMethod,
-      notes, created_at: bill?.created_at || new Date().toISOString(),
+      discount, total_amount: totalAmount, status: finalStatus, payment_method: null,
+      paid_amount: paidAmount, notes, created_at: bill?.created_at || new Date().toISOString(),
     };
   };
 
@@ -1128,10 +1211,31 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
           <button onClick={addItem} className="flat-btn mt-2 text-xs"><Plus size={14} strokeWidth={1.5} /> Add Item</button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label className="flat-label block mb-1.5">Discount (₹)</label>
             <input type="number" value={discount || ""} onChange={(e) => setDiscount(Number(e.target.value))} className="flat-input" min="0" />
+          </div>
+          <div>
+            <label className="flat-label block mb-1.5">Amount Paid (₹)</label>
+            <input
+              type="number"
+              value={paidAmount || ""}
+              onChange={(e) => {
+                const val = Number(e.target.value);
+                setPaidAmount(val);
+                if (val >= totalAmount) {
+                  setStatus("paid");
+                } else if (val > 0) {
+                  setStatus("partially_paid");
+                } else {
+                  setStatus("pending");
+                }
+              }}
+              className="flat-input"
+              min="0"
+              placeholder="0"
+            />
           </div>
           <div>
             <label className="flat-label block mb-1.5">Notes</label>
@@ -1171,29 +1275,30 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
           )}
         </div>
 
-        {/* Payment method */}
-        <div>
-          <label className="flat-label block mb-2">Payment Method</label>
-          <div className="flex gap-2">
-            {[
-              { value: "cash",   label: "💵 Cash",   desc: isEditing ? null : "Status → Pending" },
-              { value: "online", label: "📲 Online", desc: isEditing ? null : "Status → Pending" },
-            ].map((opt) => (
-              <button key={opt.value} type="button" onClick={() => setPaymentMethod(opt.value)}
-                className={`flex-1 rounded-xl border px-4 py-2.5 text-left transition-all ${paymentMethod === opt.value ? "border-amber-400 bg-amber-50 text-amber-800" : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"}`}>
-                <p className="text-sm font-medium">{opt.label}</p>
-                {opt.desc && <p className="text-[11px] mt-0.5 opacity-70">{opt.desc}</p>}
-              </button>
-            ))}
-          </div>
-        </div>
-
         {/* Status — editing only */}
         {isEditing && (
           <div>
             <label className="flat-label block mb-1.5">Status</label>
-            <select value={status} onChange={(e) => setStatus(e.target.value)} className="flat-select">
-              {["draft","pending","paid","cancelled"].map((v) => <option key={v} value={v}>{v}</option>)}
+            <select
+              value={status}
+              onChange={(e) => {
+                const newStatus = e.target.value;
+                setStatus(newStatus);
+                if (newStatus === "paid") {
+                  setPaidAmount(totalAmount);
+                } else if (newStatus === "pending" || newStatus === "draft" || newStatus === "cancelled") {
+                  setPaidAmount(0);
+                } else if (newStatus === "partially_paid") {
+                  if (paidAmount <= 0 || paidAmount >= totalAmount) {
+                    setPaidAmount(Math.round((totalAmount / 2) * 100) / 100);
+                  }
+                }
+              }}
+              className="flat-select capitalize"
+            >
+              {["draft","pending","partially_paid","paid","cancelled"].map((v) => (
+                <option key={v} value={v}>{v === 'partially_paid' ? 'partially paid' : v}</option>
+              ))}
             </select>
           </div>
         )}
@@ -1202,7 +1307,15 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
         {!isEditing && (
           <div className="flex items-center gap-2 text-xs text-gray-500 bg-gray-50 rounded-xl px-4 py-2.5">
             <span>Invoice will be saved as</span>
-            <span className="flat-pill font-semibold capitalize bg-amber-50 text-amber-700">pending</span>
+            <span className={`flat-pill font-semibold capitalize ${
+              paidAmount >= totalAmount
+                ? "bg-green-50 text-green-700"
+                : paidAmount > 0
+                ? "bg-blue-50 text-blue-700"
+                : "bg-amber-50 text-amber-700"
+            }`}>
+              {paidAmount >= totalAmount ? "paid" : paidAmount > 0 ? "partially paid" : "pending"}
+            </span>
           </div>
         )}
 
@@ -1211,7 +1324,14 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
           {gstEnabled && <div className="flex justify-between text-sm text-gray-500 mb-1"><span>GST ({gstRate}%)</span><span>{formatCurrency(taxAmount)}</span></div>}
           <div className="flex justify-between text-sm text-gray-500 mb-2"><span>Discount</span><span>-{formatCurrency(discount)}</span></div>
           <div className="flat-divider" />
-          <div className="flex justify-between text-base font-bold text-gray-900 mt-2"><span>Total</span><span>{formatCurrency(totalAmount)}</span></div>
+          <div className="flex justify-between text-base font-bold text-gray-900 mt-2"><span>Total Amount</span><span>{formatCurrency(totalAmount)}</span></div>
+          {paidAmount > 0 && (
+            <>
+              <div className="flex justify-between text-sm text-gray-500 mt-1"><span>Amount Paid</span><span>{formatCurrency(paidAmount)}</span></div>
+              <div className="flat-divider my-1.5" />
+              <div className="flex justify-between text-sm font-bold text-blue-600"><span>Amount Remaining</span><span>{formatCurrency(Math.max(0, totalAmount - paidAmount))}</span></div>
+            </>
+          )}
         </div>
 
         <div className="flex justify-end gap-2 flex-wrap">

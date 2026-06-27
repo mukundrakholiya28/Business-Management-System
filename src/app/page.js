@@ -28,12 +28,18 @@ function revenueStats(bills) {
   const mo    = now.getMonth();
 
   const thisPaid = billsInRange(bills, startOf(yr, mo), endOf(yr, mo))
-    .filter((b) => b.status === "paid")
-    .reduce((s, b) => s + Number(b.total_amount), 0);
+    .reduce((s, b) => {
+      if (b.status === "paid") return s + Number(b.total_amount);
+      if (b.status === "partially_paid") return s + Number(b.paid_amount || 0);
+      return s;
+    }, 0);
 
   const lastPaid = billsInRange(bills, startOf(yr, mo - 1), endOf(yr, mo - 1))
-    .filter((b) => b.status === "paid")
-    .reduce((s, b) => s + Number(b.total_amount), 0);
+    .reduce((s, b) => {
+      if (b.status === "paid") return s + Number(b.total_amount);
+      if (b.status === "partially_paid") return s + Number(b.paid_amount || 0);
+      return s;
+    }, 0);
 
   const trend = lastPaid === 0
     ? (thisPaid > 0 ? 100 : 0)
@@ -90,8 +96,11 @@ export default function DashboardPage() {
   const invStats = invoiceStats(bills);
 
   const pendingAmount = bills
-    .filter((b) => b.status === "pending")
-    .reduce((s, b) => s + Number(b.total_amount), 0);
+    .reduce((s, b) => {
+      if (b.status === "pending") return s + Number(b.total_amount);
+      if (b.status === "partially_paid") return s + (Number(b.total_amount) - Number(b.paid_amount || 0));
+      return s;
+    }, 0);
 
   const recentBills = [...bills]
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
@@ -207,7 +216,15 @@ export default function DashboardPage() {
                           onChange={(newStatus) => handleStatusChange(bill, newStatus)}
                         />
                         <span className="text-sm font-semibold text-gray-900 min-w-[72px] text-right tabular-nums">
-                          {formatCurrency(bill.total_amount)}
+                          {bill.status === "partially_paid" ? (
+                            <span className="flex flex-col items-end text-xs font-normal">
+                              <span className="text-gray-900 font-semibold text-sm">{formatCurrency(bill.total_amount)}</span>
+                              <span className="text-[10px] text-green-600">Paid: {formatCurrency(bill.paid_amount)}</span>
+                              <span className="text-[10px] text-amber-600 font-medium">Remaining: {formatCurrency(Math.max(0, bill.total_amount - bill.paid_amount))}</span>
+                            </span>
+                          ) : (
+                            formatCurrency(bill.total_amount)
+                          )}
                         </span>
                       </div>
                     </div>

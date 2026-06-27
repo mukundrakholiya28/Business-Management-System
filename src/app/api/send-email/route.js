@@ -33,6 +33,7 @@ export async function POST(request) {
       to, customerName, invoiceNumber, date,
       vehicle, items = [],
       subtotal, taxAmount, discount, totalAmount,
+      paidAmount = 0,
       status, paymentMethod, notes,
       pdfBase64, pdfUrl,
     } = body;
@@ -48,6 +49,7 @@ export async function POST(request) {
     const statusColor = {
       paid:      "#16A34A",
       pending:   "#D97706",
+      partially_paid: "#2563EB",
       draft:     "#6B7280",
       cancelled: "#DC2626",
     }[status] || "#6B7280";
@@ -55,6 +57,7 @@ export async function POST(request) {
     const statusBg = {
       paid:      "#ECFDF5",
       pending:   "#FFFBEB",
+      partially_paid: "#EFF6FF",
       draft:     "#F3F4F6",
       cancelled: "#FEF2F2",
     }[status] || "#F3F4F6";
@@ -107,7 +110,7 @@ export async function POST(request) {
           <p style="margin:0;font-size:22px;font-weight:700;color:#111827;">${invoiceNumber}</p>
           <p style="margin:4px 0 0;font-size:13px;color:#6B7280;">${date}</p>
         </div>
-        <span style="display:inline-block;padding:4px 14px;border-radius:999px;font-size:12px;font-weight:600;text-transform:capitalize;background:${statusBg};color:${statusColor};">${status}</span>
+        <span style="display:inline-block;padding:4px 14px;border-radius:999px;font-size:12px;font-weight:600;text-transform:capitalize;background:${statusBg};color:${statusColor};">${status === 'partially_paid' ? 'partially paid' : status}</span>
       </div>
 
       <!-- Customer + Vehicle -->
@@ -139,10 +142,15 @@ export async function POST(request) {
       <!-- Totals -->
       <div style="background:#F9FAFB;border-radius:12px;padding:16px;margin-top:16px;">
         <div style="display:flex;justify-content:space-between;font-size:13px;color:#6B7280;margin-bottom:6px;"><span>Subtotal</span><span>${fmt(subtotal)}</span></div>
-        <div style="display:flex;justify-content:space-between;font-size:13px;color:#6B7280;margin-bottom:6px;"><span>Tax (18% GST)</span><span>${fmt(taxAmount)}</span></div>
-        <div style="display:flex;justify-content:space-between;font-size:13px;color:#6B7280;margin-bottom:10px;"><span>Discount</span><span>-${fmt(discount)}</span></div>
+        ${taxAmount > 0 ? `<div style="display:flex;justify-content:space-between;font-size:13px;color:#6B7280;margin-bottom:6px;"><span>Tax (18% GST)</span><span>${fmt(taxAmount)}</span></div>` : ""}
+        ${discount > 0 ? `<div style="display:flex;justify-content:space-between;font-size:13px;color:#6B7280;margin-bottom:10px;"><span>Discount</span><span>-${fmt(discount)}</span></div>` : ""}
         <div style="height:1px;background:#E5E7EB;margin-bottom:10px;"></div>
         <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:700;color:#111827;"><span>Total</span><span>${fmt(totalAmount)}</span></div>
+        ${paidAmount > 0 ? `
+        <div style="display:flex;justify-content:space-between;font-size:13px;color:#6B7280;margin-top:6px;margin-bottom:6px;"><span>Amount Paid</span><span>${fmt(paidAmount)}</span></div>
+        <div style="height:1px;background:#E5E7EB;margin-bottom:10px;margin-top:10px;"></div>
+        <div style="display:flex;justify-content:space-between;font-size:14px;font-weight:700;color:#1D4ED8;"><span>Balance Due</span><span>${fmt(totalAmount - paidAmount)}</span></div>
+        ` : ""}
         ${paymentMethod ? `<p style="margin:8px 0 0;font-size:11px;color:#9CA3AF;">Payment: <strong style="color:#6B7280;text-transform:capitalize;">${paymentMethod}</strong></p>` : ""}
       </div>
 

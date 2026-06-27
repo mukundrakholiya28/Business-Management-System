@@ -350,6 +350,7 @@ export function StatusDot({ status }) {
   const colors = {
     paid: "#22C55E",
     pending: "#F59E0B",
+    partially_paid: "#3B82F6",
     draft: "#9CA3AF",
     cancelled: "#EF4444",
   };
@@ -358,7 +359,7 @@ export function StatusDot({ status }) {
   return (
     <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 capitalize">
       <span className="status-dot" style={{ background: c }} />
-      {status}
+      {status === 'partially_paid' ? 'partially paid' : status}
     </span>
   );
 }
@@ -370,6 +371,7 @@ export function StatusBadge({ status }) {
   const map = {
     paid:      { bg: "#ECFDF5", color: "#16A34A" },
     pending:   { bg: "#FFFBEB", color: "#D97706" },
+    partially_paid: { bg: "#EFF6FF", color: "#1D4ED8" },
     draft:     { bg: "#F3F4F6", color: "#6B7280" },
     cancelled: { bg: "#FEF2F2", color: "#DC2626" },
   };
@@ -380,7 +382,7 @@ export function StatusBadge({ status }) {
       className="flat-pill capitalize"
       style={{ background: s.bg, color: s.color }}
     >
-      {status}
+      {status === 'partially_paid' ? 'partially paid' : status}
     </span>
   );
 }
@@ -392,10 +394,11 @@ export function StatusBadge({ status }) {
 const STATUS_STYLES = {
   paid:      { bg: "bg-green-50",  text: "text-green-700",  border: "border-green-200" },
   pending:   { bg: "bg-amber-50",  text: "text-amber-700",  border: "border-amber-200" },
+  partially_paid: { bg: "bg-blue-50", text: "text-blue-700", border: "border-blue-200" },
   draft:     { bg: "bg-gray-100",  text: "text-gray-500",   border: "border-gray-200"  },
   cancelled: { bg: "bg-red-50",    text: "text-red-500",    border: "border-red-200"   },
 };
-const STATUS_OPTIONS = ["draft", "pending", "paid", "cancelled"];
+const STATUS_OPTIONS = ["draft", "pending", "partially_paid", "paid", "cancelled"];
 
 export function StatusSelect({ value, onChange }) {
   const [open, setOpen]   = useState(false);
@@ -434,7 +437,7 @@ export function StatusSelect({ value, onChange }) {
             onClick={() => { onChange(s); setOpen(false); }}
             className={`w-full text-left px-3 py-1.5 text-xs font-medium transition-colors ${st.text} ${s === value ? st.bg : "hover:bg-gray-50"}`}
           >
-            {s.charAt(0).toUpperCase() + s.slice(1)}
+            {s === 'partially_paid' ? 'Partially Paid' : s.charAt(0).toUpperCase() + s.slice(1)}
           </button>
         );
       })}
@@ -450,7 +453,7 @@ export function StatusSelect({ value, onChange }) {
         onClick={handleOpen}
         className={`inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-2.5 py-1 border cursor-pointer select-none ${cur.bg} ${cur.text} ${cur.border}`}
       >
-        {value.charAt(0).toUpperCase() + value.slice(1)}
+        {value === 'partially_paid' ? 'Partially Paid' : value.charAt(0).toUpperCase() + value.slice(1)}
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="opacity-50">
           <path d="M2 4l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>

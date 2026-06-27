@@ -194,6 +194,7 @@ function buildTemplateData({ bill, items, customer, vehicle, profile = null }) {
       status:
         bill.status === "paid"      ? "Paid"  :
         bill.status === "pending"   ? "Due"   :
+        bill.status === "partially_paid" ? "Partially Paid" :
         bill.status === "draft"     ? "Draft" :
         bill.status === "cancelled" ? "Void"  : bill.status,
     },
@@ -217,6 +218,8 @@ function buildTemplateData({ bill, items, customer, vehicle, profile = null }) {
       taxRate:   bill.gst_enabled ? (bill.gst_rate ?? 18) : 0,
       taxAmount: Number(bill.tax_amount || 0),
       total:     Number(bill.total_amount),
+      paidAmount: Number(bill.paid_amount || 0),
+      balanceDue: Number(bill.total_amount) - Number(bill.paid_amount || 0),
     },
     payment: {
       method:        profile?.payment_methods || process.env.NEXT_PUBLIC_PAYMENT_METHODS || "UPI / Bank Transfer / Cash",

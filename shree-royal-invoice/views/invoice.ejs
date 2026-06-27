@@ -152,10 +152,25 @@ if (items.length <= FIRST_PAGE_ROWS) {
           <span>&#x20B9;<%= charges.taxAmount.toLocaleString('en-IN') %></span>
         </div>
         <% } %>
+        <% if (charges.paidAmount && charges.paidAmount > 0) { %>
+        <div class="row grand">
+          <span>Total Amount</span>
+          <span>&#x20B9;<%= charges.total.toLocaleString('en-IN') %></span>
+        </div>
+        <div class="row muted" style="padding: 6px 14px 2px 14px;">
+          <span>Amount Paid</span>
+          <span>&#x20B9;<%= charges.paidAmount.toLocaleString('en-IN') %></span>
+        </div>
+        <div class="row grand" style="margin-top: 4px; background: var(--white); border: 2px solid var(--navy);">
+          <span>Balance Due</span>
+          <span>&#x20B9;<%= charges.balanceDue.toLocaleString('en-IN') %></span>
+        </div>
+        <% } else { %>
         <div class="row grand">
           <span>Total Due</span>
           <span>&#x20B9;<%= charges.total.toLocaleString('en-IN') %></span>
         </div>
+        <% } %>
       </div>
     </div>
     <% } %>

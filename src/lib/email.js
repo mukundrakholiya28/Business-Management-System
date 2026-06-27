@@ -31,6 +31,7 @@ export async function sendInvoiceEmail({ bill, items, customer, vehicle, pdfBase
       taxAmount:     bill.tax_amount,
       discount:      bill.discount,
       totalAmount:   bill.total_amount,
+      paidAmount:    bill.paid_amount || 0,
       status:        bill.status,
       paymentMethod: bill.payment_method,
       notes:         bill.notes,

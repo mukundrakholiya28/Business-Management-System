@@ -46,7 +46,7 @@ ALTER TABLE vehicles ADD CONSTRAINT uq_vehicles_vehicle_number UNIQUE (vehicle_n
 -- 3. BILLS / INVOICES
 -- ──────────────────────────────────────────────────────────────
 -- Status enum for type-safe bill states
-CREATE TYPE bill_status AS ENUM ('draft', 'pending', 'paid', 'cancelled');
+CREATE TYPE bill_status AS ENUM ('draft', 'pending', 'partially_paid', 'paid', 'cancelled');
 
 CREATE TABLE bills (
   id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -59,6 +59,7 @@ CREATE TABLE bills (
   total_amount  NUMERIC(12,2) NOT NULL DEFAULT 0,
   status        bill_status   NOT NULL DEFAULT 'draft',
   payment_method TEXT,                                          -- 'cash' | 'online' | NULL
+  paid_amount   NUMERIC(12,2) NOT NULL DEFAULT 0,
   notes         TEXT,
   created_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
   updated_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW()
@@ -198,3 +199,7 @@ INSERT INTO business_profile (
 
 -- Add pdf_url column to bills table (stored generated invoice PDFs)
 ALTER TABLE bills ADD COLUMN IF NOT EXISTS pdf_url TEXT;
+
+-- Migration to support partial payments:
+ALTER TYPE bill_status ADD VALUE IF NOT EXISTS 'partially_paid';
+ALTER TABLE bills ADD COLUMN IF NOT EXISTS paid_amount NUMERIC(12,2) NOT NULL DEFAULT 0;
