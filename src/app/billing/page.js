@@ -624,10 +624,17 @@ export default function BillingPage() {
                               {customer?.name}
                             </td>
                             <td className="py-3 px-5 text-gray-500 hidden md:table-cell">
-                              <span className="inline-flex items-center gap-1">
-                                <Car size={12} strokeWidth={1.5} className="text-gray-400" />
-                                {formatVehicleNumber(vehicle?.vehicle_number)}
-                              </span>
+                              <div className="flex flex-col">
+                                <span className="inline-flex items-center gap-1">
+                                  <Car size={12} strokeWidth={1.5} className="text-gray-400" />
+                                  {formatVehicleNumber(vehicle?.vehicle_number)}
+                                </span>
+                                {bill.kms_run && (
+                                  <span className="text-[10px] text-gray-400 pl-4">
+                                    {Number(bill.kms_run).toLocaleString("en-IN")} km
+                                  </span>
+                                )}
+                              </div>
                             </td>
                             <td className="py-3 px-5 text-gray-400 hidden lg:table-cell text-xs">
                               {formatDate(bill.created_at)}
@@ -689,6 +696,7 @@ export default function BillingPage() {
                             <p className="text-[11px] text-gray-500 flex items-center gap-1">
                               <Car size={10} strokeWidth={1.5} className="text-gray-400" />
                               {formatVehicleNumber(vehicle.vehicle_number)} · {vehicle.make} {vehicle.model}
+                              {bill.kms_run && ` · ${Number(bill.kms_run).toLocaleString("en-IN")} km`}
                             </p>
                           )}
                           <p className="text-[10px] text-gray-400">{formatDate(bill.created_at)}</p>
@@ -820,6 +828,11 @@ function BillDetailModal({ bill, items, customers, vehicles, onClose, onExportPD
           <p className="text-sm font-medium text-gray-900">{formatVehicleNumber(vehicle?.vehicle_number)}</p>
           <p className="text-xs text-gray-400 mt-0.5">{vehicle?.make} {vehicle?.model} ({vehicle?.year})</p>
           <p className="text-xs text-gray-400">{vehicle?.color}</p>
+          {bill.kms_run && (
+            <p className="text-xs font-semibold text-gray-700 mt-1.5">
+              Odometer: {Number(bill.kms_run).toLocaleString("en-IN")} km
+            </p>
+          )}
         </div>
       </div>
 
@@ -959,6 +972,7 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
   const [discount, setDiscount] = useState(bill?.discount || 0);
   const [paidAmount, setPaidAmount] = useState(bill?.paid_amount || 0);
   const [notes, setNotes] = useState(bill?.notes || "");
+  const [kmsRun, setKmsRun] = useState(bill?.kms_run || "");
   const [status, setStatus] = useState(bill?.status || "draft");
   const [gstEnabled, setGstEnabled] = useState(bill?.tax_amount > 0 ?? true);
   const [gstRate, setGstRate] = useState(bill?.gst_rate ?? 18);
@@ -1074,6 +1088,7 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
       bill_number: normalizedBillNumber,
       customer_id: customerId,
       vehicle_id: vehicleId,
+      kms_run: kmsRun ? Number(kmsRun) : null,
       subtotal,
       tax_amount: taxAmount,
       gst_enabled: gstEnabled,
@@ -1300,7 +1315,18 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
           <button onClick={addItem} className="flat-btn mt-2 text-xs"><Plus size={14} strokeWidth={1.5} /> Add Item</button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+          <div>
+            <label className="flat-label block mb-1.5">Odometer (km)</label>
+            <input
+              type="number"
+              value={kmsRun || ""}
+              onChange={(e) => setKmsRun(e.target.value ? Number(e.target.value) : "")}
+              className="flat-input"
+              min="0"
+              placeholder="e.g. 45000"
+            />
+          </div>
           <div>
             <label className="flat-label block mb-1.5">Discount (₹)</label>
             <input type="number" value={discount || ""} onChange={(e) => setDiscount(Number(e.target.value))} className="flat-input" min="0" />

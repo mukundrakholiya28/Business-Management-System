@@ -205,6 +205,7 @@ function buildTemplateData({ bill, items, customer, vehicle, profile = null }) {
       vehicle: vehicle
         ? `${vehicle.make || ""} ${vehicle.model || ""} · ${vehicle.vehicle_number}`.trim()
         : "",
+      kms_run: bill.kms_run || null,
     },
     items: items.map((i) => ({
       description: i.description,

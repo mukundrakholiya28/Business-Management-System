@@ -214,6 +214,7 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
       .update({
         customer_id:    bill.customer_id,
         vehicle_id:     bill.vehicle_id,
+        kms_run:        bill.kms_run || null,
         subtotal:       bill.subtotal,
         tax_amount:     bill.tax_amount,
         discount:       bill.discount,

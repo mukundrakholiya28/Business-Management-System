@@ -53,6 +53,7 @@ CREATE TABLE bills (
   bill_number   SERIAL,
   customer_id   UUID          NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
   vehicle_id    UUID          NOT NULL REFERENCES vehicles(id)  ON DELETE RESTRICT,
+  kms_run       INTEGER,                                        -- Odometer reading at service
   subtotal      NUMERIC(12,2) NOT NULL DEFAULT 0,
   tax_amount    NUMERIC(12,2) NOT NULL DEFAULT 0,
   discount      NUMERIC(12,2) NOT NULL DEFAULT 0,
@@ -203,3 +204,6 @@ ALTER TABLE bills ADD COLUMN IF NOT EXISTS pdf_url TEXT;
 -- Migration to support partial payments:
 ALTER TYPE bill_status ADD VALUE IF NOT EXISTS 'partially_paid';
 ALTER TABLE bills ADD COLUMN IF NOT EXISTS paid_amount NUMERIC(12,2) NOT NULL DEFAULT 0;
+
+-- Migration to support odometer reading at service:
+ALTER TABLE bills ADD COLUMN IF NOT EXISTS kms_run INTEGER;

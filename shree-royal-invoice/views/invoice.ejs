@@ -88,6 +88,9 @@ if (items.length <= FIRST_PAGE_ROWS) {
         <%= billTo.address %><br/>
         <%= billTo.phone %><br/>
         Vehicle: <%= billTo.vehicle %>
+        <% if (billTo.kms_run) { %>
+          <br/>Odometer: <%= Number(billTo.kms_run).toLocaleString('en-IN') %> km
+        <% } %>
       </div>
     </div>
     <div class="meta-block">
