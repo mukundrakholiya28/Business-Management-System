@@ -4,14 +4,14 @@ import { useEffect, useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import { useProtectedRoute } from "@/context/AuthContext";
-import { StatusSelect, EmptyState, Modal, PageSkeleton } from "@/components/ui";
-import { formatCurrency, formatDate, getInitials, generateId } from "@/lib/helpers";
+import { StatusSelect, EmptyState, Modal, PageSkeleton, PhoneNumber } from "@/components/ui";
+import { formatCurrency, formatDate, getInitials, generateId, formatPhoneNumber } from "@/lib/helpers";
 import { loadWorkshopData, saveBillWithItems, deleteVehicle, deleteBill, updateCustomer, saveVehicle } from "@/lib/workshop-data";
 import { exportInvoicePDF, generateInvoicePDF } from "@/lib/pdf";
 import { supabase } from "@/lib/supabase";
 import {
   ArrowLeft, Car, Phone, Mail, MapPin, Receipt,
-  Download, Eye, Pencil, Send, ChevronDown, ChevronRight,
+  Download, Pencil, Send, ChevronDown, ChevronRight,
   FileText, Trash2, Plus, UserPlus,
 } from "lucide-react";
 
@@ -502,7 +502,8 @@ export default function CustomerDetailPage() {
                 <div className="flex flex-wrap gap-x-5 gap-y-1 mt-1.5">
                   {customer.phone_number && (
                     <span className="flex items-center gap-1.5 text-xs text-gray-500">
-                      <Phone size={11} strokeWidth={1.5} /> {customer.phone_number}
+                      <Phone size={11} strokeWidth={1.5} />
+                      <PhoneNumber phone={customer.phone_number} display={formatPhoneNumber(customer.phone_number)} />
                     </span>
                   )}
                   {customer.email && (
@@ -658,13 +659,17 @@ export default function CustomerDetailPage() {
                                 </thead>
                                 <tbody>
                                   {vehicleBills.map((bill) => (
-                                    <tr key={bill.id} className="border-t border-gray-50 hover:bg-gray-50/50 transition-colors">
+                                    <tr
+                                      key={bill.id}
+                                      onClick={() => setSelectedBill(bill)}
+                                      className="border-t border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer"
+                                    >
                                       <td className="py-3 px-5 font-medium text-gray-900 whitespace-nowrap">
                                         INV-{bill.bill_number}
                                         {bill.notes && <span className="ml-2 text-xs text-gray-400 font-normal hidden md:inline">{bill.notes}</span>}
                                       </td>
                                       <td className="py-3 px-5 text-xs text-gray-400 hidden sm:table-cell">{formatDate(bill.created_at)}</td>
-                                      <td className="py-3 px-5 text-center">
+                                      <td className="py-3 px-5 text-center" onClick={(e) => e.stopPropagation()}>
                                         <StatusSelect
                                           value={bill.status}
                                           onChange={(newStatus) => handleStatusChange(bill, newStatus)}
@@ -681,9 +686,8 @@ export default function CustomerDetailPage() {
                                           formatCurrency(bill.total_amount)
                                         )}
                                       </td>
-                                      <td className="py-3 px-5 text-right whitespace-nowrap">
+                                      <td className="py-3 px-5 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                                         <div className="flex items-center justify-end gap-0.5">
-                                          <button onClick={() => setSelectedBill(bill)} className="flat-btn-ghost p-1.5" title="View"><Eye size={15} strokeWidth={1.5} /></button>
                                           <button onClick={() => { setEditingBill(bill); setShowBillForm(true); setSelectedBill(null); }} className="flat-btn-ghost p-1.5" title="Edit"><Pencil size={15} strokeWidth={1.5} /></button>
                                           <button onClick={() => exportPDF(bill)} className="flat-btn-ghost p-1.5" title="PDF"><Download size={15} strokeWidth={1.5} /></button>
                                           <button onClick={() => sendToCustomer(bill)} className="flat-btn-ghost p-1.5 text-accent" title="Send"><Send size={15} strokeWidth={1.5} /></button>
@@ -699,13 +703,19 @@ export default function CustomerDetailPage() {
                             {/* Mobile list view */}
                             <div className="sm:hidden divide-y divide-gray-100">
                               {vehicleBills.map((bill) => (
-                                <div key={bill.id} className="p-4 flex flex-col gap-2.5">
+                                <div
+                                  key={bill.id}
+                                  onClick={() => setSelectedBill(bill)}
+                                  className="p-4 flex flex-col gap-2.5 cursor-pointer hover:bg-gray-50 transition-colors"
+                                >
                                   <div className="flex items-center justify-between">
                                     <span className="font-semibold text-gray-900 text-xs">INV-{bill.bill_number}</span>
-                                    <StatusSelect
-                                      value={bill.status}
-                                      onChange={(newStatus) => handleStatusChange(bill, newStatus)}
-                                    />
+                                    <div onClick={(e) => e.stopPropagation()}>
+                                      <StatusSelect
+                                        value={bill.status}
+                                        onChange={(newStatus) => handleStatusChange(bill, newStatus)}
+                                      />
+                                    </div>
                                   </div>
                                   <div className="flex items-end justify-between">
                                     <div>
@@ -724,8 +734,7 @@ export default function CustomerDetailPage() {
                                       )}
                                     </span>
                                   </div>
-                                  <div className="flex items-center justify-end gap-1 border-t border-gray-50/50 pt-2">
-                                    <button onClick={() => setSelectedBill(bill)} className="flat-btn-ghost p-1.5" title="View"><Eye size={14} strokeWidth={1.5} /></button>
+                                  <div className="flex items-center justify-end gap-1 border-t border-gray-50/50 pt-2" onClick={(e) => e.stopPropagation()}>
                                     <button onClick={() => { setEditingBill(bill); setShowBillForm(true); setSelectedBill(null); }} className="flat-btn-ghost p-1.5" title="Edit"><Pencil size={14} strokeWidth={1.5} /></button>
                                     <button onClick={() => exportPDF(bill)} className="flat-btn-ghost p-1.5" title="PDF"><Download size={14} strokeWidth={1.5} /></button>
                                     <button onClick={() => sendToCustomer(bill)} className="flat-btn-ghost p-1.5 text-accent" title="Send"><Send size={14} strokeWidth={1.5} /></button>
@@ -871,7 +880,9 @@ function BillDetailModal({ bill, items, customer, vehicle, onClose, onExportPDF,
         <div className="bg-gray-50 rounded-xl p-4">
           <p className="flat-label mb-2">Customer</p>
           <p className="text-sm font-medium text-gray-900">{customer?.name}</p>
-          <p className="text-xs text-gray-400 mt-0.5">{customer?.phone_number}</p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            <PhoneNumber phone={customer?.phone_number} display={formatPhoneNumber(customer?.phone_number)} />
+          </p>
           <p className="text-xs text-gray-400">{customer?.address}</p>
         </div>
         <div className="bg-gray-50 rounded-xl p-4">
@@ -1016,6 +1027,11 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
   const [status, setStatus]             = useState(bill?.status   || "draft");
   const [gstEnabled, setGstEnabled]     = useState(bill?.tax_amount > 0 ?? true);
   const [gstRate, setGstRate]           = useState(bill?.gst_rate ?? 18);
+  const [billDate, setBillDate]         = useState(
+    bill?.created_at
+      ? new Date(bill.created_at).toISOString().slice(0, 10)
+      : new Date().toISOString().slice(0, 10)
+  );
 
   const visibleVehicles = vehicles.filter((v) => v.customer_id === customerId);
   const addItem    = () => setItems((p) => [...p, { description: "", quantity: 1, unit_price: 0 }]);
@@ -1105,7 +1121,10 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
       id: billId, bill_number: billNumber, customer_id: customerId, vehicle_id: vehicleId,
       subtotal, tax_amount: taxAmount, gst_enabled: gstEnabled, gst_rate: gstEnabled ? gstRate : 0,
       discount, total_amount: totalAmount, status: finalStatus, payment_method: null,
-      paid_amount: paidAmount, notes, created_at: bill?.created_at || new Date().toISOString(),
+      paid_amount: paidAmount, notes,
+      created_at: billDate
+        ? new Date(billDate + "T00:00:00").toISOString()
+        : bill?.created_at || new Date().toISOString(),
     };
   };
 
@@ -1211,7 +1230,16 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
           <button onClick={addItem} className="flat-btn mt-2 text-xs"><Plus size={14} strokeWidth={1.5} /> Add Item</button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+          <div>
+            <label className="flat-label block mb-1.5">Invoice Date</label>
+            <input
+              type="date"
+              value={billDate}
+              onChange={(e) => setBillDate(e.target.value)}
+              className="flat-input"
+            />
+          </div>
           <div>
             <label className="flat-label block mb-1.5">Discount (₹)</label>
             <input type="number" value={discount || ""} onChange={(e) => setDiscount(Number(e.target.value))} className="flat-input" min="0" />

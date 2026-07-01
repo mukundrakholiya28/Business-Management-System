@@ -32,7 +32,7 @@ export async function loadWorkshopData() {
     supabase.from("customers").select("*").order("created_at", { ascending: false }),
     supabase.from("vehicles").select("*").order("created_at", { ascending: false }),
     supabase.from("bills").select("*").order("created_at", { ascending: false }),
-    supabase.from("bill_items").select("*").order("created_at", { ascending: true }),
+    supabase.from("bill_items").select("*").order("sort_order", { ascending: true }).order("created_at", { ascending: true }),
   ]);
 
   const firstError = [customersResult, vehiclesResult, billsResult, billItemsResult].find(
@@ -183,11 +183,12 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
   const itemPayload = itemsProvided
     ? (items || [])
         .filter((i) => i.description?.trim())
-        .map((i) => ({
+        .map((i, index) => ({
           description: i.description,
           quantity:    i.quantity,
           unit_price:  i.unit_price,
           total_price: i.quantity * i.unit_price,
+          sort_order:  index,
         }))
     : null;
 
@@ -224,6 +225,7 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
         paid_amount:    paid_amount,
         notes:          bill.notes,
         pdf_url:        bill.pdf_url || null,
+        ...(bill.created_at ? { created_at: bill.created_at } : {}),
       })
       .eq("id", bill.id)
       .select("*");

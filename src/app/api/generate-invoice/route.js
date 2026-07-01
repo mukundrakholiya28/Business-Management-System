@@ -207,12 +207,14 @@ function buildTemplateData({ bill, items, customer, vehicle, profile = null }) {
         : "",
       kms_run: bill.kms_run || null,
     },
-    items: items.map((i) => ({
-      description: i.description,
-      qty:         i.quantity,
-      rate:        Number(i.unit_price),
-      amount:      Number(i.total_price ?? i.quantity * i.unit_price),
-    })),
+    items: [...items]
+      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+      .map((i) => ({
+        description: i.description,
+        qty:         i.quantity,
+        rate:        Number(i.unit_price),
+        amount:      Number(i.total_price ?? i.quantity * i.unit_price),
+      })),
     charges: {
       subtotal:  Number(bill.subtotal),
       discount:  Number(bill.discount  || 0),

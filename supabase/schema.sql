@@ -207,3 +207,12 @@ ALTER TABLE bills ADD COLUMN IF NOT EXISTS paid_amount NUMERIC(12,2) NOT NULL DE
 
 -- Migration to support odometer reading at service:
 ALTER TABLE bills ADD COLUMN IF NOT EXISTS kms_run INTEGER;
+
+-- Migration to preserve insertion order of invoice line items:
+ALTER TABLE bill_items ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS idx_bill_items_sort ON bill_items (bill_id, sort_order);
+
+-- Allow created_at on bills to be overridden (backdating / custom date):
+-- No schema change needed — created_at is already TIMESTAMPTZ without a constraint.
+-- Supabase RLS must allow the column to be updated; run if you see permission errors:
+-- ALTER TABLE bills DISABLE ROW LEVEL SECURITY;  -- then re-enable with correct policy

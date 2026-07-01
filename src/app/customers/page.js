@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Navbar from "@/components/Navbar";
 import { useProtectedRoute } from "@/context/AuthContext";
-import { EmptyState, Modal, SectionHeader, PageSkeleton } from "@/components/ui";
-import { formatDate, getInitials, normalizeSearch, formatVehicleNumber } from "@/lib/helpers";
+import { EmptyState, Modal, SectionHeader, PageSkeleton, PhoneNumber } from "@/components/ui";
+import { formatDate, getInitials, normalizeSearch, formatVehicleNumber, formatPhoneNumber } from "@/lib/helpers";
 import { loadWorkshopData, saveCustomerWithVehicles, deleteCustomer, updateCustomer } from "@/lib/workshop-data";
 import Link from "next/link";
 import { Plus, Search, UserPlus, Users, ChevronRight, Trash2, Pencil } from "lucide-react";
@@ -180,7 +180,10 @@ export default function CustomersPage() {
                         </div>
                         <div className="min-w-0">
                           <p className="text-sm font-semibold text-gray-900 truncate group-hover:text-amber-600 transition-colors">{customer.name}</p>
-                          <p className="text-xs text-gray-400">{customer.phone_number}{customer.email ? ` · ${customer.email}` : ""}</p>
+                          <p className="text-xs text-gray-400">
+                            <PhoneNumber phone={customer.phone_number} display={formatPhoneNumber(customer.phone_number)} />
+                            {customer.email ? ` · ${customer.email}` : ""}
+                          </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-3 shrink-0">

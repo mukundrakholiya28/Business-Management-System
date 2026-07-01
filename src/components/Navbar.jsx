@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut, Settings } from "lucide-react";
+import { LogOut, Settings, UserCircle } from "lucide-react";
 import GlobalSearch from "./GlobalSearch";
 import { useAuth } from "@/context/AuthContext";
 
@@ -11,7 +11,7 @@ const navItems = [
   { href: "/",          label: "Dashboard" },
   { href: "/customers", label: "Customers" },
   { href: "/billing",   label: "Billing"   },
-  { href: "/profile",   label: "Profile"   },
+  { href: "/finance",   label: "Finance"   },
 ];
 
 export default function Navbar() {
@@ -55,10 +55,18 @@ export default function Navbar() {
 
         {/* Search + Logout â€” pushed to right */}
         <div className="flex items-center gap-2 ml-auto shrink-0">
-          <GlobalSearch />          <Link
+          <GlobalSearch />
+          <Link
             href="/profile"
             className={`flat-btn-ghost p-1.5 text-gray-500 hover:text-gray-900 ${pathname === '/profile' ? 'text-gray-900' : ''}`}
             title="Profile"
+          >
+            <UserCircle size={18} strokeWidth={1.5} />
+          </Link>
+          <Link
+            href="/profile"
+            className={`flat-btn-ghost p-1.5 text-gray-500 hover:text-gray-900 ${pathname === '/profile' ? 'text-gray-900' : ''}`}
+            title="Settings"
           >
             <Settings size={16} strokeWidth={1.5} />
           </Link>

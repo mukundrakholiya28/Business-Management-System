@@ -1,15 +1,17 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import { useProtectedRoute } from "@/context/AuthContext";
-import { SectionHeader, StatusBadge, StatusDot, EmptyState, Modal, StatusSelect, PageSkeleton } from "@/components/ui";
+import { SectionHeader, StatusBadge, StatusDot, EmptyState, Modal, StatusSelect, PageSkeleton, PhoneNumber } from "@/components/ui";
 import {
   formatCurrency,
   formatDate,
   generateId,
   normalizeSearch,
   formatVehicleNumber,
+  formatPhoneNumber,
 } from "@/lib/helpers";
 import { sendWhatsApp } from "@/lib/whatsapp";
 import { exportInvoicePDF, generateInvoicePDF } from "@/lib/pdf";
@@ -26,7 +28,6 @@ import {
   Download,
   Send,
   Trash2,
-  Eye,
   Car,
   Receipt,
   Search,
@@ -83,6 +84,7 @@ function billMatchesTimeFilter(bill, filter, customRange) {
 
 export default function BillingPage() {
   const { user, loading } = useProtectedRoute();
+  const searchParams = useSearchParams();
   const [bills, setBills] = useState([]);
   const [billItems, setBillItems] = useState([]);
   const [customers, setCustomers] = useState([]);
@@ -92,7 +94,7 @@ export default function BillingPage() {
   const [editingBill, setEditingBill] = useState(null);
   const [showBillForm, setShowBillForm] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
-  const [timeFilter, setTimeFilter] = useState("daily");
+  const [timeFilter, setTimeFilter] = useState("all");
   const [customRange, setCustomRange] = useState({ start: "", end: "" });
   const [searchQuery, setSearchQuery] = useState("");
   const [confirmDeleteBill, setConfirmDeleteBill] = useState(null);
@@ -126,6 +128,14 @@ export default function BillingPage() {
       mounted = false;
     };
   }, []);
+
+  // Auto-open bill from URL param (e.g. navigating from dashboard)
+  useEffect(() => {
+    const billId = searchParams.get("bill");
+    if (!billId || loadingData || bills.length === 0) return;
+    const match = bills.find((b) => b.id === billId);
+    if (match) setSelectedBill(match);
+  }, [searchParams, bills, loadingData]);
 
   if (loading || !user || loadingData) {
     return (
@@ -616,7 +626,11 @@ export default function BillingPage() {
                         const customer = customers.find((c) => c.id === bill.customer_id);
                         const vehicle = vehicles.find((v) => v.id === bill.vehicle_id);
                         return (
-                          <tr key={bill.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                          <tr
+                            key={bill.id}
+                            onClick={() => setSelectedBill(bill)}
+                            className="border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer"
+                          >
                             <td className="py-3 px-5 font-medium text-gray-900 whitespace-nowrap">
                               INV-{bill.bill_number}
                             </td>
@@ -639,7 +653,7 @@ export default function BillingPage() {
                             <td className="py-3 px-5 text-gray-400 hidden lg:table-cell text-xs">
                               {formatDate(bill.created_at)}
                             </td>
-                            <td className="py-3 px-5 text-center">
+                            <td className="py-3 px-5 text-center" onClick={(e) => e.stopPropagation()}>
                               <StatusSelect
                                 value={bill.status}
                                 onChange={(newStatus) => handleStatusChange(bill, newStatus)}
@@ -657,9 +671,8 @@ export default function BillingPage() {
                                 formatCurrency(bill.total_amount)
                               )}
                             </td>
-                            <td className="py-3 px-5 text-right whitespace-nowrap">
+                            <td className="py-3 px-5 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                               <div className="flex items-center justify-end gap-0.5">
-                                <button onClick={() => setSelectedBill(bill)} className="flat-btn-ghost p-1.5" title="View"><Eye size={15} strokeWidth={1.5} /></button>
                                 <button onClick={() => openEditBillForm(bill)} className="flat-btn-ghost p-1.5" title="Edit"><Pencil size={15} strokeWidth={1.5} /></button>
                                 <button onClick={() => exportPDF(bill)} className="flat-btn-ghost p-1.5" title="PDF"><Download size={15} strokeWidth={1.5} /></button>
                                 <button onClick={() => sendToCustomer(bill)} className="flat-btn-ghost p-1.5 text-accent" title="Send"><Send size={15} strokeWidth={1.5} /></button>
@@ -681,14 +694,20 @@ export default function BillingPage() {
                     const customer = customers.find((c) => c.id === bill.customer_id);
                     const vehicle = vehicles.find((v) => v.id === bill.vehicle_id);
                     return (
-                      <div key={bill.id} className="flat-card flex flex-col gap-3 p-4">
+                      <div
+                        key={bill.id}
+                        onClick={() => setSelectedBill(bill)}
+                        className="flat-card flex flex-col gap-3 p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+                      >
                         <div className="flex items-center justify-between">
                           <span className="font-semibold text-gray-900 text-sm">INV-{bill.bill_number}</span>
-                          <StatusSelect
-                            value={bill.status}
-                            onChange={(newStatus) => handleStatusChange(bill, newStatus)}
-                            stopPropagation
-                          />
+                          <div onClick={(e) => e.stopPropagation()}>
+                            <StatusSelect
+                              value={bill.status}
+                              onChange={(newStatus) => handleStatusChange(bill, newStatus)}
+                              stopPropagation
+                            />
+                          </div>
                         </div>
                         <div className="space-y-1">
                           <p className="text-xs text-gray-700 font-medium">{customer?.name || "—"}</p>
@@ -717,8 +736,7 @@ export default function BillingPage() {
                               )}
                             </p>
                           </div>
-                          <div className="flex items-center gap-1">
-                            <button onClick={() => setSelectedBill(bill)} className="flat-btn-ghost p-1.5" title="View"><Eye size={14} strokeWidth={1.5} /></button>
+                          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                             <button onClick={() => openEditBillForm(bill)} className="flat-btn-ghost p-1.5" title="Edit"><Pencil size={14} strokeWidth={1.5} /></button>
                             <button onClick={() => exportPDF(bill)} className="flat-btn-ghost p-1.5" title="PDF"><Download size={14} strokeWidth={1.5} /></button>
                             <button onClick={() => sendToCustomer(bill)} className="flat-btn-ghost p-1.5 text-accent" title="Send"><Send size={14} strokeWidth={1.5} /></button>
@@ -820,7 +838,9 @@ function BillDetailModal({ bill, items, customers, vehicles, onClose, onExportPD
         <div className="bg-gray-50 rounded-xl p-4">
           <p className="flat-label mb-2">Customer</p>
           <p className="text-sm font-medium text-gray-900">{customer?.name}</p>
-          <p className="text-xs text-gray-400 mt-0.5">{customer?.phone_number}</p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            <PhoneNumber phone={customer?.phone_number} display={formatPhoneNumber(customer?.phone_number)} />
+          </p>
           <p className="text-xs text-gray-400">{customer?.address}</p>
         </div>
         <div className="bg-gray-50 rounded-xl p-4">
@@ -974,6 +994,11 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
   const [notes, setNotes] = useState(bill?.notes || "");
   const [kmsRun, setKmsRun] = useState(bill?.kms_run || "");
   const [status, setStatus] = useState(bill?.status || "draft");
+  const [billDate, setBillDate] = useState(
+    bill?.created_at
+      ? new Date(bill.created_at).toISOString().slice(0, 10)
+      : new Date().toISOString().slice(0, 10)
+  );
   const [gstEnabled, setGstEnabled] = useState(bill?.tax_amount > 0 ?? true);
   const [gstRate, setGstRate] = useState(bill?.gst_rate ?? 18);
   const [showCustomerForm, setShowCustomerForm] = useState(false);
@@ -1099,7 +1124,9 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
       payment_method: null,
       paid_amount: paidAmount,
       notes,
-      created_at: bill?.created_at || new Date().toISOString(),
+      created_at: billDate
+        ? new Date(billDate + "T00:00:00").toISOString()
+        : bill?.created_at || new Date().toISOString(),
     };
   };
 
@@ -1315,7 +1342,16 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
           <button onClick={addItem} className="flat-btn mt-2 text-xs"><Plus size={14} strokeWidth={1.5} /> Add Item</button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div>
+            <label className="flat-label block mb-1.5">Invoice Date</label>
+            <input
+              type="date"
+              value={billDate}
+              onChange={(e) => setBillDate(e.target.value)}
+              className="flat-input"
+            />
+          </div>
           <div>
             <label className="flat-label block mb-1.5">Odometer (km)</label>
             <input

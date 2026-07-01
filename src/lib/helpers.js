@@ -114,6 +114,19 @@ export function formatVehicleNumber(num) {
 }
 
 /**
+ * Format phone number for display — strips leading country code (91)
+ * so stored "919876543210" shows as "9876543210"
+ */
+export function formatPhoneNumber(phone) {
+  if (!phone) return "";
+  const digits = phone.replace(/\D/g, "");
+  if (digits.startsWith("91") && digits.length === 12) {
+    return digits.slice(2);
+  }
+  return digits || phone;
+}
+
+/**
  * Month names
  */
 export const MONTHS = [

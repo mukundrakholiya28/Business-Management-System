@@ -527,3 +527,77 @@ export function Modal({ children, onClose, title, wide }) {
     </div>
   );
 }
+
+/**
+ * PhoneNumber — clickable phone display with call + copy popover
+ * Props:
+ *   phone       — raw stored number (e.g. "919876543210" or "9876543210")
+ *   display     — pre-formatted display string (without country code)
+ *   className   — optional extra classes for the trigger
+ */
+export function PhoneNumber({ phone, display, className = "" }) {
+  const [open, setOpen]     = useState(false);
+  const [copied, setCopied] = useState(false);
+  const ref                 = useRef(null);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    function handle(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [open]);
+
+  if (!phone && !display) return null;
+
+  const digits     = (phone || display || "").replace(/\D/g, "");
+  // Use full stored number for tel: so dialler gets country code if present
+  const telNumber  = digits ? `+${digits}` : "";
+  const copyText   = display || digits;
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(copyText);
+      setCopied(true);
+      setTimeout(() => { setCopied(false); setOpen(false); }, 1200);
+    } catch {
+      setOpen(false);
+    }
+  };
+
+  return (
+    <span ref={ref} className="relative inline-flex items-center">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={`hover:text-accent hover:underline underline-offset-2 transition-colors cursor-pointer ${className}`}
+      >
+        {display || copyText}
+      </button>
+
+      {open && (
+        <span className="absolute bottom-full left-0 mb-1.5 z-50 flex flex-col bg-white border border-gray-100 rounded-xl shadow-dropdown overflow-hidden min-w-[130px] animate-fade-in">
+          {telNumber && (
+            <a
+              href={`tel:${telNumber}`}
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+            >
+              <span>📞</span> Call
+            </a>
+          )}
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors font-medium text-left"
+          >
+            <span>{copied ? "✓" : "📋"}</span>
+            {copied ? "Copied!" : "Copy number"}
+          </button>
+        </span>
+      )}
+    </span>
+  );
+}
