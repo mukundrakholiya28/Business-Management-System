@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import { useProtectedRoute } from "@/context/AuthContext";
@@ -82,7 +82,7 @@ function billMatchesTimeFilter(bill, filter, customRange) {
   return true;
 }
 
-export default function BillingPage() {
+function BillingPage() {
   const { user, loading } = useProtectedRoute();
   const searchParams = useSearchParams();
   const [bills, setBills] = useState([]);
@@ -1532,5 +1532,18 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
         </div>
       </div>
     </Modal>
+  );
+}
+
+export default function BillingPageWrapper() {
+  return (
+    <Suspense fallback={
+      <div className="flex flex-col min-h-screen bg-page">
+        <Navbar />
+        <PageSkeleton variant="billing" />
+      </div>
+    }>
+      <BillingPage />
+    </Suspense>
   );
 }
