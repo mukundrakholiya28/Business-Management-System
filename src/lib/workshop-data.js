@@ -434,13 +434,47 @@ export async function deleteVehicle(vehicleId) {
 export async function deleteBill(billId) {
   if (!isSupabaseReady()) throw new Error("Supabase is not configured.");
 
+  // 1. Fetch the bill to get user_id and bill_number
+  const { data: billData, error: fetchError } = await supabase
+    .from("bills")
+    .select("user_id, bill_number")
+    .eq("id", billId)
+    .single();
+  if (fetchError || !billData) {
+    throw new Error(fetchError?.message || "Bill not found.");
+  }
+
+  const { user_id, bill_number: deletedNum } = billData;
+
+  // 2. Delete associated bill items
   const { error: itemsError } = await supabase
     .from("bill_items").delete().eq("bill_id", billId);
   if (itemsError) throw new Error(itemsError.message);
 
-  const { error } = await supabase
+  // 3. Delete the bill record
+  const { error: deleteError } = await supabase
     .from("bills").delete().eq("id", billId);
-  if (error) throw new Error(error.message);
+  if (deleteError) throw new Error(deleteError.message);
+
+  // 4. Fetch subsequent bills to update
+  const { data: billsToUpdate, error: listError } = await supabase
+    .from("bills")
+    .select("id, bill_number")
+    .eq("user_id", user_id)
+    .gt("bill_number", deletedNum)
+    .order("bill_number", { ascending: true });
+  if (listError) throw new Error(listError.message);
+
+  // 5. Update them sequentially to prevent unique constraint conflicts
+  if (billsToUpdate && billsToUpdate.length > 0) {
+    for (const b of billsToUpdate) {
+      const { error: updateError } = await supabase
+        .from("bills")
+        .update({ bill_number: b.bill_number - 1 })
+        .eq("id", b.id);
+      if (updateError) throw new Error(updateError.message);
+    }
+  }
 }
 
 // ─── Workers / Salary (legacy) ────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, Suspense } from "react";
+import React, { useEffect, useState, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import { useProtectedRoute } from "@/context/AuthContext";
@@ -374,7 +374,16 @@ function BillingPage() {
   const handleDeleteBill = async (bill) => {
     try {
       await deleteBill(bill.id);
-      setBills((prev) => prev.filter((b) => b.id !== bill.id));
+      setBills((prev) =>
+        prev
+          .filter((b) => b.id !== bill.id)
+          .map((b) => {
+            if (b.bill_number > bill.bill_number) {
+              return { ...b, bill_number: b.bill_number - 1 };
+            }
+            return b;
+          })
+      );
       setBillItems((prev) => prev.filter((i) => i.bill_id !== bill.id));
       if (selectedBill?.id === bill.id) setSelectedBill(null);
       setConfirmDeleteBill(null);
@@ -1010,8 +1019,23 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
     { vehicle_number: "", make: "", model: "", year: "", color: "" },
   ]);
 
+  const shouldFocusNewItem = useRef(false);
+  const selectEnterCount = useRef({ customer: 0, vehicle: 0 });
+
+  useEffect(() => {
+    if (shouldFocusNewItem.current) {
+      const nextEl = document.querySelector(`[data-nav="item-desc-${items.length - 1}"]`);
+      if (nextEl) {
+        nextEl.focus();
+        shouldFocusNewItem.current = false;
+      }
+    }
+  }, [items.length]);
+
   const visibleVehicles = vehicles.filter((vehicle) => vehicle.customer_id === customerId);
-  const addItem = () => setItems((prev) => [...prev, { description: "", quantity: 1, unit_price: 0 }]);
+  const addItem = () => {
+    setItems((prev) => [...prev, { description: "", quantity: 1, unit_price: 0 }]);
+  };
   const removeItem = (index) => setItems((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
   const updateItem = (index, field, value) =>
     setItems((prev) => prev.map((item, itemIndex) => (itemIndex === index ? { ...item, [field]: value } : item)));
@@ -1161,6 +1185,82 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
     onSave({ bill: savedBill, items: savedItems, isEditing });
   };
 
+  const handleKeyDown = (e) => {
+    // Check if Numpad Plus was pressed
+    if (e.code === "NumpadAdd") {
+      e.preventDefault();
+      addItem();
+      shouldFocusNewItem.current = true;
+      return;
+    }
+
+    if (e.key === "Enter") {
+      const target = e.target;
+      const nav = target.getAttribute("data-nav");
+      
+      // Don't intercept Enter if it's not one of our tracked inputs
+      if (!nav) return;
+
+      // Handle dropdowns (Customer and Vehicle)
+      if (nav === "customer" || nav === "vehicle") {
+        if (!selectEnterCount.current[nav]) {
+          // First Enter on select: let it open, set count to 1
+          selectEnterCount.current[nav] = 1;
+        } else {
+          // Second Enter on select: move to next
+          e.preventDefault();
+          selectEnterCount.current[nav] = 0;
+          
+          if (nav === "customer") {
+            const nextEl = document.querySelector('[data-nav="vehicle"]');
+            if (nextEl) nextEl.focus();
+          } else if (nav === "vehicle") {
+            const nextEl = document.querySelector('[data-nav="billDate"]');
+            if (nextEl) nextEl.focus();
+          }
+        }
+        return;
+      }
+
+      e.preventDefault();
+
+      if (nav === "billDate") {
+        const nextEl = document.querySelector('[data-nav="kmsRun"]');
+        if (nextEl) nextEl.focus();
+      } else if (nav === "kmsRun") {
+        const nextEl = document.querySelector('[data-nav="item-desc-0"]');
+        if (nextEl) nextEl.focus();
+      } else if (nav.startsWith("item-desc-")) {
+        const idx = parseInt(nav.replace("item-desc-", ""), 10);
+        const nextEl = document.querySelector(`[data-nav="item-qty-${idx}"]`);
+        if (nextEl) nextEl.focus();
+      } else if (nav.startsWith("item-qty-")) {
+        const idx = parseInt(nav.replace("item-qty-", ""), 10);
+        const nextEl = document.querySelector(`[data-nav="item-price-${idx}"]`);
+        if (nextEl) nextEl.focus();
+      } else if (nav.startsWith("item-price-")) {
+        const idx = parseInt(nav.replace("item-price-", ""), 10);
+        const nextEl = document.querySelector(`[data-nav="item-desc-${idx + 1}"]`);
+        if (nextEl) {
+          nextEl.focus();
+        } else {
+          const discountEl = document.querySelector('[data-nav="discount"]');
+          if (discountEl) discountEl.focus();
+        }
+      } else if (nav === "discount") {
+        const nextEl = document.querySelector('[data-nav="paidAmount"]');
+        if (nextEl) nextEl.focus();
+      } else if (nav === "paidAmount") {
+        const nextEl = document.querySelector('[data-nav="notes"]');
+        if (nextEl) nextEl.focus();
+      } else if (nav === "notes") {
+        if (canSave) {
+          handleSave();
+        }
+      }
+    }
+  };
+
   const handleCreateCustomer = async () => {
     if (!customerName.trim() || !customerPhone.trim()) return;
 
@@ -1204,7 +1304,7 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
 
   return (
     <Modal title={isEditing ? "Edit Invoice" : "Create New Invoice"} onClose={onClose} wide>
-      <div className="space-y-5">
+      <div className="space-y-5" onKeyDown={handleKeyDown}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <p className="flat-label mb-1">Customer</p>
@@ -1262,6 +1362,8 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
                 setCustomerId(e.target.value);
                 setVehicleId("");
               }}
+              onFocus={() => { selectEnterCount.current.customer = 0; }}
+              data-nav="customer"
               className="flat-select"
             >
               <option value="">Select customer…</option>
@@ -1274,7 +1376,14 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
           </div>
           <div>
             <label className="flat-label block mb-1.5">Vehicle</label>
-            <select value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} className="flat-select" disabled={!customerId}>
+            <select
+              value={vehicleId}
+              onChange={(e) => setVehicleId(e.target.value)}
+              onFocus={() => { selectEnterCount.current.vehicle = 0; }}
+              data-nav="vehicle"
+              className="flat-select"
+              disabled={!customerId}
+            >
               <option value="">Select vehicle…</option>
               {visibleVehicles.map((vehicle) => (
                 <option key={vehicle.id} value={vehicle.id}>
@@ -1282,6 +1391,31 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
                 </option>
               ))}
             </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="flat-label block mb-1.5">Invoice Date</label>
+            <input
+              type="date"
+              value={billDate}
+              onChange={(e) => setBillDate(e.target.value)}
+              data-nav="billDate"
+              className="flat-input"
+            />
+          </div>
+          <div>
+            <label className="flat-label block mb-1.5">Odometer (km)</label>
+            <input
+              type="number"
+              value={kmsRun || ""}
+              onChange={(e) => setKmsRun(e.target.value ? Number(e.target.value) : "")}
+              data-nav="kmsRun"
+              className="flat-input"
+              min="0"
+              placeholder="e.g. 45000"
+            />
           </div>
         </div>
 
@@ -1299,6 +1433,7 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
                     placeholder="Description"
                     value={item.description}
                     onChange={(e) => updateItem(index, "description", e.target.value)}
+                    data-nav={`item-desc-${index}`}
                     className="flat-input flex-1 sm:w-60 md:w-80"
                     list={`suggestions-${index}`}
                   />
@@ -1315,6 +1450,7 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
                     value={item.quantity}
                     min="1"
                     onChange={(e) => updateItem(index, "quantity", Number(e.target.value))}
+                    data-nav={`item-qty-${index}`}
                     className="flat-input flex-1 sm:w-20"
                   />
                   <input
@@ -1323,6 +1459,7 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
                     value={item.unit_price || ""}
                     min="0"
                     onChange={(e) => updateItem(index, "unit_price", Number(e.target.value))}
+                    data-nav={`item-price-${index}`}
                     className="flat-input flex-2 sm:w-28"
                   />
                   <div className="flex items-center gap-2 shrink-0 min-w-[80px] justify-end">
@@ -1342,30 +1479,17 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
           <button onClick={addItem} className="flat-btn mt-2 text-xs"><Plus size={14} strokeWidth={1.5} /> Add Item</button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          <div>
-            <label className="flat-label block mb-1.5">Invoice Date</label>
-            <input
-              type="date"
-              value={billDate}
-              onChange={(e) => setBillDate(e.target.value)}
-              className="flat-input"
-            />
-          </div>
-          <div>
-            <label className="flat-label block mb-1.5">Odometer (km)</label>
-            <input
-              type="number"
-              value={kmsRun || ""}
-              onChange={(e) => setKmsRun(e.target.value ? Number(e.target.value) : "")}
-              className="flat-input"
-              min="0"
-              placeholder="e.g. 45000"
-            />
-          </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label className="flat-label block mb-1.5">Discount (₹)</label>
-            <input type="number" value={discount || ""} onChange={(e) => setDiscount(Number(e.target.value))} className="flat-input" min="0" />
+            <input
+              type="number"
+              value={discount || ""}
+              onChange={(e) => setDiscount(Number(e.target.value))}
+              data-nav="discount"
+              className="flat-input"
+              min="0"
+            />
           </div>
           <div>
             <label className="flat-label block mb-1.5">Amount Paid (₹)</label>
@@ -1383,6 +1507,7 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
                   setStatus("pending");
                 }
               }}
+              data-nav="paidAmount"
               className="flat-input"
               min="0"
               placeholder="0"
@@ -1390,7 +1515,14 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
           </div>
           <div>
             <label className="flat-label block mb-1.5">Notes</label>
-            <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} className="flat-input" placeholder="Optional…" />
+            <input
+              type="text"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              data-nav="notes"
+              className="flat-input"
+              placeholder="Optional…"
+            />
           </div>
         </div>
 

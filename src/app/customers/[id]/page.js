@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import { useProtectedRoute } from "@/context/AuthContext";
@@ -23,6 +23,7 @@ export default function CustomerDetailPage() {
   const [customer, setCustomer]     = useState(null);
   const [vehicles, setVehicles]     = useState([]);
   const [bills, setBills]           = useState([]);
+  const [allBills, setAllBills]     = useState([]);
   const [billItems, setBillItems]   = useState([]);
   const [loadingData, setLoadingData] = useState(true);
 
@@ -54,6 +55,7 @@ export default function CustomerDetailPage() {
         setCustomer(found || null);
         setVehicles((data.vehicles || []).filter((v) => v.customer_id === id));
         setBills((data.bills || []).filter((b) => b.customer_id === id));
+        setAllBills(data.bills || []);
         setBillItems(data.billItems || []);
         setAllCustomers(data.customers || []);
         setAllVehicles(data.vehicles || []);
@@ -164,6 +166,7 @@ export default function CustomerDetailPage() {
 
         // 2. Instantly update UI and close modal
         setBills((prev) => prev.map((b) => (b.id === nextBill.id ? nextBill : b)));
+        setAllBills((prev) => prev.map((b) => (b.id === nextBill.id ? nextBill : b)));
         setBillItems((prev) => {
           const remaining = prev.filter((i) => i.bill_id !== nextBill.id);
           return [...remaining, ...nextItems];
@@ -200,6 +203,7 @@ export default function CustomerDetailPage() {
                   const updatedSaved = await saveBillWithItems({ bill: billWithPdf, items: undefined, isEditing: true });
                   const finalBill = updatedSaved.bill;
                   setBills((prev) => prev.map((b) => (b.id === finalBill.id ? finalBill : b)));
+                  setAllBills((prev) => prev.map((b) => (b.id === finalBill.id ? finalBill : b)));
                   setSelectedBill((prev) => prev?.id === finalBill.id ? finalBill : prev);
                   console.log("Background PDF generation & upload complete:", pdfUrl);
                 }
@@ -219,6 +223,7 @@ export default function CustomerDetailPage() {
 
         // 2. Instantly update UI and close modal
         setBills((prev) => [nextBill, ...prev]);
+        setAllBills((prev) => [nextBill, ...prev]);
         setBillItems((prev) => [...prev, ...nextItems]);
         setSelectedBill(nextBill);
         setShowBillForm(false);
@@ -252,6 +257,7 @@ export default function CustomerDetailPage() {
                   const updatedSaved = await saveBillWithItems({ bill: billWithPdf, items: undefined, isEditing: true });
                   const finalBill = updatedSaved.bill;
                   setBills((prev) => prev.map((b) => (b.id === finalBill.id ? finalBill : b)));
+                  setAllBills((prev) => prev.map((b) => (b.id === finalBill.id ? finalBill : b)));
                   setSelectedBill((prev) => prev?.id === finalBill.id ? finalBill : prev);
                   console.log("Background PDF generation & upload complete:", pdfUrl);
                 }
@@ -282,7 +288,26 @@ export default function CustomerDetailPage() {
   const handleDeleteBill = async (bill) => {
     try {
       await deleteBill(bill.id);
-      setBills((prev) => prev.filter((b) => b.id !== bill.id));
+      setBills((prev) =>
+        prev
+          .filter((b) => b.id !== bill.id)
+          .map((b) => {
+            if (b.bill_number > bill.bill_number) {
+              return { ...b, bill_number: b.bill_number - 1 };
+            }
+            return b;
+          })
+      );
+      setAllBills((prev) =>
+        prev
+          .filter((b) => b.id !== bill.id)
+          .map((b) => {
+            if (b.bill_number > bill.bill_number) {
+              return { ...b, bill_number: b.bill_number - 1 };
+            }
+            return b;
+          })
+      );
       setBillItems((prev) => prev.filter((i) => i.bill_id !== bill.id));
       setConfirmDeleteBill(null);
       showToast(`INV-${bill.bill_number} deleted`);
@@ -796,7 +821,7 @@ export default function CustomerDetailPage() {
           key={editingBill?.id || "new"}
           customers={allCustomers}
           vehicles={allVehicles}
-          bills={bills}
+          bills={allBills}
           bill={editingBill}
           billItems={billItems.filter((i) => i.bill_id === editingBill?.id)}
           allBillItems={billItems}
@@ -1024,6 +1049,7 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
   const [discount, setDiscount]         = useState(bill?.discount || 0);
   const [paidAmount, setPaidAmount]     = useState(bill?.paid_amount || 0);
   const [notes, setNotes]               = useState(bill?.notes    || "");
+  const [kmsRun, setKmsRun]             = useState(bill?.kms_run || "");
   const [status, setStatus]             = useState(bill?.status   || "draft");
   const [gstEnabled, setGstEnabled]     = useState(bill?.tax_amount > 0 ?? true);
   const [gstRate, setGstRate]           = useState(bill?.gst_rate ?? 18);
@@ -1033,8 +1059,23 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
       : new Date().toISOString().slice(0, 10)
   );
 
+  const shouldFocusNewItem = useRef(false);
+  const selectEnterCount = useRef({ customer: 0, vehicle: 0 });
+
+  useEffect(() => {
+    if (shouldFocusNewItem.current) {
+      const nextEl = document.querySelector(`[data-nav="item-desc-${items.length - 1}"]`);
+      if (nextEl) {
+        nextEl.focus();
+        shouldFocusNewItem.current = false;
+      }
+    }
+  }, [items.length]);
+
   const visibleVehicles = vehicles.filter((v) => v.customer_id === customerId);
-  const addItem    = () => setItems((p) => [...p, { description: "", quantity: 1, unit_price: 0 }]);
+  const addItem    = () => {
+    setItems((p) => [...p, { description: "", quantity: 1, unit_price: 0 }]);
+  };
   const removeItem = (i) => setItems((p) => p.filter((_, idx) => idx !== i));
   const updateItem = (i, f, v) => setItems((p) => p.map((it, idx) => idx === i ? { ...it, [f]: v } : it));
 
@@ -1119,6 +1160,7 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
 
     return {
       id: billId, bill_number: billNumber, customer_id: customerId, vehicle_id: vehicleId,
+      kms_run: kmsRun ? Number(kmsRun) : null,
       subtotal, tax_amount: taxAmount, gst_enabled: gstEnabled, gst_rate: gstEnabled ? gstRate : 0,
       discount, total_amount: totalAmount, status: finalStatus, payment_method: null,
       paid_amount: paidAmount, notes,
@@ -1153,23 +1195,137 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
     onSave({ bill: savedBill, items: savedItems, isEditing });
   };
 
+  const handleKeyDown = (e) => {
+    // Check if Numpad Plus was pressed
+    if (e.code === "NumpadAdd") {
+      e.preventDefault();
+      addItem();
+      shouldFocusNewItem.current = true;
+      return;
+    }
+
+    if (e.key === "Enter") {
+      const target = e.target;
+      const nav = target.getAttribute("data-nav");
+      
+      // Don't intercept Enter if it's not one of our tracked inputs
+      if (!nav) return;
+
+      // Handle dropdowns (Customer and Vehicle)
+      if (nav === "customer" || nav === "vehicle") {
+        if (!selectEnterCount.current[nav]) {
+          // First Enter on select: let it open, set count to 1
+          selectEnterCount.current[nav] = 1;
+        } else {
+          // Second Enter on select: move to next
+          e.preventDefault();
+          selectEnterCount.current[nav] = 0;
+          
+          if (nav === "customer") {
+            const nextEl = document.querySelector('[data-nav="vehicle"]');
+            if (nextEl) nextEl.focus();
+          } else if (nav === "vehicle") {
+            const nextEl = document.querySelector('[data-nav="billDate"]');
+            if (nextEl) nextEl.focus();
+          }
+        }
+        return;
+      }
+
+      e.preventDefault();
+
+      if (nav === "billDate") {
+        const nextEl = document.querySelector('[data-nav="kmsRun"]');
+        if (nextEl) nextEl.focus();
+      } else if (nav === "kmsRun") {
+        const nextEl = document.querySelector('[data-nav="item-desc-0"]');
+        if (nextEl) nextEl.focus();
+      } else if (nav.startsWith("item-desc-")) {
+        const idx = parseInt(nav.replace("item-desc-", ""), 10);
+        const nextEl = document.querySelector(`[data-nav="item-qty-${idx}"]`);
+        if (nextEl) nextEl.focus();
+      } else if (nav.startsWith("item-qty-")) {
+        const idx = parseInt(nav.replace("item-qty-", ""), 10);
+        const nextEl = document.querySelector(`[data-nav="item-price-${idx}"]`);
+        if (nextEl) nextEl.focus();
+      } else if (nav.startsWith("item-price-")) {
+        const idx = parseInt(nav.replace("item-price-", ""), 10);
+        const nextEl = document.querySelector(`[data-nav="item-desc-${idx + 1}"]`);
+        if (nextEl) {
+          nextEl.focus();
+        } else {
+          const discountEl = document.querySelector('[data-nav="discount"]');
+          if (discountEl) discountEl.focus();
+        }
+      } else if (nav === "discount") {
+        const nextEl = document.querySelector('[data-nav="paidAmount"]');
+        if (nextEl) nextEl.focus();
+      } else if (nav === "paidAmount") {
+        const nextEl = document.querySelector('[data-nav="notes"]');
+        if (nextEl) nextEl.focus();
+      } else if (nav === "notes") {
+        if (canSave) {
+          handleSave();
+        }
+      }
+    }
+  };
+
   return (
     <Modal title={isEditing ? "Edit Invoice" : "New Invoice"} onClose={onClose} wide>
-      <div className="space-y-5">
+      <div className="space-y-5" onKeyDown={handleKeyDown}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="flat-label block mb-1.5">Customer</label>
-            <select value={customerId} onChange={(e) => { setCustomerId(e.target.value); setVehicleId(""); }} className="flat-select">
+            <select
+              value={customerId}
+              onChange={(e) => { setCustomerId(e.target.value); setVehicleId(""); }}
+              onFocus={() => { selectEnterCount.current.customer = 0; }}
+              data-nav="customer"
+              className="flat-select"
+            >
               <option value="">Select customer…</option>
               {customers.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.phone_number})</option>)}
             </select>
           </div>
           <div>
             <label className="flat-label block mb-1.5">Vehicle</label>
-            <select value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} className="flat-select" disabled={!customerId}>
+            <select
+              value={vehicleId}
+              onChange={(e) => setVehicleId(e.target.value)}
+              onFocus={() => { selectEnterCount.current.vehicle = 0; }}
+              data-nav="vehicle"
+              className="flat-select"
+              disabled={!customerId}
+            >
               <option value="">Select vehicle…</option>
               {visibleVehicles.map((v) => <option key={v.id} value={v.id}>{v.vehicle_number} — {v.make} {v.model}</option>)}
             </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="flat-label block mb-1.5">Invoice Date</label>
+            <input
+              type="date"
+              value={billDate}
+              onChange={(e) => setBillDate(e.target.value)}
+              data-nav="billDate"
+              className="flat-input"
+            />
+          </div>
+          <div>
+            <label className="flat-label block mb-1.5">Odometer (km)</label>
+            <input
+              type="number"
+              value={kmsRun || ""}
+              onChange={(e) => setKmsRun(e.target.value ? Number(e.target.value) : "")}
+              data-nav="kmsRun"
+              className="flat-input"
+              min="0"
+              placeholder="e.g. 45000"
+            />
           </div>
         </div>
 
@@ -1187,6 +1343,7 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
                     placeholder="Description"
                     value={item.description}
                     onChange={(e) => updateItem(i, "description", e.target.value)}
+                    data-nav={`item-desc-${i}`}
                     className="flat-input flex-1 sm:w-60 md:w-80"
                     list={`suggestions-${i}`}
                   />
@@ -1203,6 +1360,7 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
                     value={item.quantity}
                     min="1"
                     onChange={(e) => updateItem(i, "quantity", Number(e.target.value))}
+                    data-nav={`item-qty-${i}`}
                     className="flat-input w-20 shrink-0"
                   />
                   <input
@@ -1211,6 +1369,7 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
                     value={item.unit_price || ""}
                     min="0"
                     onChange={(e) => updateItem(i, "unit_price", Number(e.target.value))}
+                    data-nav={`item-price-${i}`}
                     className="flat-input flex-grow sm:w-28"
                   />
                   <div className="flex items-center gap-2 shrink-0 min-w-[80px] justify-end">
@@ -1230,19 +1389,17 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
           <button onClick={addItem} className="flat-btn mt-2 text-xs"><Plus size={14} strokeWidth={1.5} /> Add Item</button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-          <div>
-            <label className="flat-label block mb-1.5">Invoice Date</label>
-            <input
-              type="date"
-              value={billDate}
-              onChange={(e) => setBillDate(e.target.value)}
-              className="flat-input"
-            />
-          </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label className="flat-label block mb-1.5">Discount (₹)</label>
-            <input type="number" value={discount || ""} onChange={(e) => setDiscount(Number(e.target.value))} className="flat-input" min="0" />
+            <input
+              type="number"
+              value={discount || ""}
+              onChange={(e) => setDiscount(Number(e.target.value))}
+              data-nav="discount"
+              className="flat-input"
+              min="0"
+            />
           </div>
           <div>
             <label className="flat-label block mb-1.5">Amount Paid (₹)</label>
@@ -1260,6 +1417,7 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
                   setStatus("pending");
                 }
               }}
+              data-nav="paidAmount"
               className="flat-input"
               min="0"
               placeholder="0"
@@ -1267,7 +1425,14 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
           </div>
           <div>
             <label className="flat-label block mb-1.5">Notes</label>
-            <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} className="flat-input" placeholder="Optional…" />
+            <input
+              type="text"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              data-nav="notes"
+              className="flat-input"
+              placeholder="Optional…"
+            />
           </div>
         </div>
 
