@@ -630,7 +630,7 @@ function BillingPage() {
                   </thead>
                   <tbody>
                     {filteredBills
-                      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+                      .sort((a, b) => b.bill_number - a.bill_number)
                       .map((bill) => {
                         const customer = customers.find((c) => c.id === bill.customer_id);
                         const vehicle = vehicles.find((v) => v.id === bill.vehicle_id);
@@ -698,7 +698,7 @@ function BillingPage() {
               {/* Mobile view: Card List */}
               <div className="md:hidden space-y-3 animate-fade-in">
                 {filteredBills
-                  .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+                  .sort((a, b) => b.bill_number - a.bill_number)
                   .map((bill) => {
                     const customer = customers.find((c) => c.id === bill.customer_id);
                     const vehicle = vehicles.find((v) => v.id === bill.vehicle_id);
@@ -1119,7 +1119,7 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
 
   const buildBill = (overrideStatus) => {
     const billId = bill?.id || generateId();
-    const normalizedBillNumber = bill?.bill_number || Math.max(1000, ...bills.map((entry) => entry.bill_number)) + 1;
+    const normalizedBillNumber = bill?.bill_number || (bills && bills.length > 0 ? Math.max(0, ...bills.map((entry) => entry.bill_number)) + 1 : 1);
     
     let finalStatus = overrideStatus;
     if (finalStatus === "paid" || finalStatus === "partially_paid" || finalStatus === "pending") {

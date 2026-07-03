@@ -84,7 +84,7 @@ export default function DashboardPage() {
     }, 0);
 
   const recentBills = [...bills]
-    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .sort((a, b) => b.bill_number - a.bill_number)
     .slice(0, 5);
 
   const handleStatusChange = async (bill, newStatus) => {

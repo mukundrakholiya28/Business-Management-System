@@ -31,7 +31,7 @@ export async function loadWorkshopData() {
   const [customersResult, vehiclesResult, billsResult, billItemsResult] = await Promise.all([
     supabase.from("customers").select("*").order("created_at", { ascending: false }),
     supabase.from("vehicles").select("*").order("created_at", { ascending: false }),
-    supabase.from("bills").select("*").order("created_at", { ascending: false }),
+    supabase.from("bills").select("*").order("bill_number", { ascending: false }),
     supabase.from("bill_items").select("*").order("sort_order", { ascending: true }).order("created_at", { ascending: true }),
   ]);
 
@@ -255,11 +255,27 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
 
   // Create new bill — include user_id
   const userId = await getUserId();
-  const { id: _id, bill_number: _bn, gst_enabled: _ge, gst_rate: _gr, ...billPayload } = bill;
+  const { id: _id, bill_number: clientBillNumber, gst_enabled: _ge, gst_rate: _gr, ...billPayload } = bill;
+
+  // Calculate next bill_number to prevent sequence issues
+  let finalBillNumber = clientBillNumber;
+  if (!finalBillNumber) {
+    const { data: maxBill, error: maxError } = await supabase
+      .from("bills")
+      .select("bill_number")
+      .eq("user_id", userId)
+      .order("bill_number", { ascending: false })
+      .limit(1);
+    if (maxError) throw new Error(maxError.message);
+    const maxNum = maxBill?.[0]?.bill_number || 0;
+    finalBillNumber = maxNum + 1;
+  }
+
   const { data: createdBill, error: createError } = await supabase
     .from("bills")
     .insert([{
       ...billPayload,
+      bill_number: finalBillNumber,
       status,
       paid_amount,
       user_id: userId,

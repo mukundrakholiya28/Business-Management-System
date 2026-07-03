@@ -70,7 +70,7 @@ export default function CustomerDetailPage() {
     vehicles.forEach((v) => {
       map[v.id] = bills
         .filter((b) => b.vehicle_id === v.id)
-        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        .sort((a, b) => b.bill_number - a.bill_number);
     });
     return map;
   }, [vehicles, bills]);
@@ -1145,7 +1145,7 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
 
   const buildBill = (overrideStatus) => {
     const billId     = bill?.id || generateId();
-    const billNumber = bill?.bill_number || Math.max(1000, ...bills.map((b) => b.bill_number)) + 1;
+    const billNumber = bill?.bill_number || (bills && bills.length > 0 ? Math.max(0, ...bills.map((b) => b.bill_number)) + 1 : 1);
     
     let finalStatus = overrideStatus;
     if (finalStatus === "paid" || finalStatus === "partially_paid" || finalStatus === "pending") {
