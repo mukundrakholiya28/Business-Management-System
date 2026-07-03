@@ -210,6 +210,41 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
   }
 
   if (isEditing) {
+    // 1. Fetch current bill data from database to check payment history
+    const { data: currentBill, error: fetchError } = await supabase
+      .from("bills")
+      .select("paid_amount, payment_history")
+      .eq("id", bill.id)
+      .single();
+
+    let updatedHistory = bill.payment_history || [];
+    if (!fetchError && currentBill) {
+      const currentPaid = Number(currentBill.paid_amount || 0);
+      const nextPaid = Number(paid_amount);
+      updatedHistory = currentBill.payment_history || [];
+      if (!Array.isArray(updatedHistory)) {
+        updatedHistory = [];
+      }
+
+      if (nextPaid !== currentPaid) {
+        if (nextPaid > currentPaid) {
+          // Amount increased - record the difference as a new payment
+          updatedHistory.push({
+            date: new Date().toISOString(),
+            amount: nextPaid - currentPaid,
+            method: bill.payment_method || "cash"
+          });
+        } else {
+          // Amount decreased - adjust history by resetting to a single entry
+          updatedHistory = nextPaid > 0 ? [{
+            date: new Date().toISOString(),
+            amount: nextPaid,
+            method: bill.payment_method || "cash"
+          }] : [];
+        }
+      }
+    }
+
     const { data: updatedBills, error: updateError } = await supabase
       .from("bills")
       .update({
@@ -225,6 +260,7 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
         paid_amount:    paid_amount,
         notes:          bill.notes,
         pdf_url:        bill.pdf_url || null,
+        payment_history: updatedHistory,
         ...(bill.created_at ? { created_at: bill.created_at } : {}),
       })
       .eq("id", bill.id)
@@ -248,7 +284,7 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
     }
 
     return {
-      bill:  updatedBills?.[0] || { ...bill, status, paid_amount },
+      bill:  updatedBills?.[0] || { ...bill, status, paid_amount, payment_history: updatedHistory },
       items: itemPayload ? itemPayload.map((i) => ({ ...i, bill_id: bill.id })) : [],
     };
   }
@@ -271,6 +307,15 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
     finalBillNumber = maxNum + 1;
   }
 
+  let finalPaymentHistory = bill.payment_history || [];
+  if (paid_amount > 0 && (!finalPaymentHistory || finalPaymentHistory.length === 0)) {
+    finalPaymentHistory = [{
+      date: new Date().toISOString(),
+      amount: paid_amount,
+      method: bill.payment_method || "cash"
+    }];
+  }
+
   const { data: createdBill, error: createError } = await supabase
     .from("bills")
     .insert([{
@@ -279,7 +324,8 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
       status,
       paid_amount,
       user_id: userId,
-      payment_method: bill.payment_method || null
+      payment_method: bill.payment_method || null,
+      payment_history: finalPaymentHistory
     }])
     .select("*")
     .single();

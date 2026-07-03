@@ -986,6 +986,16 @@ function BillDetailModal({ bill, items, customer, vehicle, onClose, onExportPDF,
             <div className="flex justify-between text-sm text-gray-500 mt-1">
               <span>Amount Paid</span><span>{formatCurrency(bill.paid_amount)}</span>
             </div>
+            {bill.payment_history && Array.isArray(bill.payment_history) && bill.payment_history.length > 0 && (
+              <div className="mt-1.5 pl-3 border-l-2 border-gray-200 space-y-1">
+                {bill.payment_history.map((pay, pIdx) => (
+                  <div key={pIdx} className="flex justify-between text-xs text-gray-400 tabular-nums">
+                    <span>{formatDate(pay.date)}</span>
+                    <span>{formatCurrency(pay.amount)} {pay.method ? `(${pay.method})` : ""}</span>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="flat-divider my-1.5" />
             <div className="flex justify-between text-sm font-bold text-blue-600">
               <span>Amount Remaining</span><span>{formatCurrency(Math.max(0, bill.total_amount - bill.paid_amount))}</span>
@@ -1047,7 +1057,14 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
       : [{ description: "", quantity: 1, unit_price: 0 }]
   );
   const [discount, setDiscount]         = useState(bill?.discount || 0);
-  const [paidAmount, setPaidAmount]     = useState(bill?.paid_amount || 0);
+  const [paymentHistory, setPaymentHistory] = useState(
+    bill?.payment_history && Array.isArray(bill.payment_history)
+      ? bill.payment_history
+      : bill?.paid_amount > 0
+      ? [{ date: bill.created_at || new Date().toISOString(), amount: bill.paid_amount, method: bill.payment_method || "cash" }]
+      : []
+  );
+  const paidAmount = paymentHistory.reduce((sum, p) => sum + Number(p.amount || 0), 0);
   const [notes, setNotes]               = useState(bill?.notes    || "");
   const [kmsRun, setKmsRun]             = useState(bill?.kms_run || "");
   const [status, setStatus]             = useState(bill?.status   || "draft");
@@ -1164,6 +1181,7 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
       subtotal, tax_amount: taxAmount, gst_enabled: gstEnabled, gst_rate: gstEnabled ? gstRate : 0,
       discount, total_amount: totalAmount, status: finalStatus, payment_method: null,
       paid_amount: paidAmount, notes,
+      payment_history: paymentHistory,
       created_at: billDate
         ? new Date(billDate + "T00:00:00").toISOString()
         : bill?.created_at || new Date().toISOString(),
@@ -1389,7 +1407,69 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
           <button onClick={addItem} className="flat-btn mt-2 text-xs"><Plus size={14} strokeWidth={1.5} /> Add Item</button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="space-y-3 bg-gray-50 rounded-xl p-4 border border-gray-100">
+          <div className="flex justify-between items-center">
+            <span className="flat-label block">Payment Parts / History</span>
+            <button
+              type="button"
+              onClick={() => setPaymentHistory(prev => [...prev, { date: new Date().toISOString().slice(0, 10), amount: 0, method: "cash" }])}
+              className="flat-btn text-xs px-2 py-1"
+            >
+              + Add Payment Part
+            </button>
+          </div>
+          {paymentHistory.length === 0 ? (
+            <p className="text-xs text-gray-400 italic">No payments recorded yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {paymentHistory.map((pay, pIdx) => (
+                <div key={pIdx} className="flex gap-2 items-center flex-wrap sm:flex-nowrap bg-white p-2.5 rounded-lg border border-gray-100 shadow-sm">
+                  <input
+                    type="date"
+                    value={pay.date ? pay.date.slice(0, 10) : ""}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setPaymentHistory(prev => prev.map((p, idx) => idx === pIdx ? { ...p, date: val ? new Date(val + "T12:00:00").toISOString() : p.date } : p));
+                    }}
+                    className="flat-input text-xs !w-full sm:!w-40"
+                  />
+                  <input
+                    type="number"
+                    placeholder="Amount (₹)"
+                    value={pay.amount || ""}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      setPaymentHistory(prev => prev.map((p, idx) => idx === pIdx ? { ...p, amount: val } : p));
+                    }}
+                    className="flat-input text-xs !w-full sm:!w-32"
+                    min="0"
+                  />
+                  <select
+                    value={pay.method || "cash"}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setPaymentHistory(prev => prev.map((p, idx) => idx === pIdx ? { ...p, method: val } : p));
+                    }}
+                    className="flat-select text-xs !w-full sm:!w-32 capitalize"
+                  >
+                    <option value="cash">Cash</option>
+                    <option value="online">Online</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setPaymentHistory(prev => prev.filter((_, idx) => idx !== pIdx))}
+                    className="flat-btn-ghost p-1.5 text-red-500 hover:bg-red-50"
+                    title="Delete Payment Part"
+                  >
+                    <Trash2 size={14} strokeWidth={1.5} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="flat-label block mb-1.5">Discount (₹)</label>
             <input
@@ -1399,28 +1479,6 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
               data-nav="discount"
               className="flat-input"
               min="0"
-            />
-          </div>
-          <div>
-            <label className="flat-label block mb-1.5">Amount Paid (₹)</label>
-            <input
-              type="number"
-              value={paidAmount || ""}
-              onChange={(e) => {
-                const val = Number(e.target.value);
-                setPaidAmount(val);
-                if (val >= totalAmount) {
-                  setStatus("paid");
-                } else if (val > 0) {
-                  setStatus("partially_paid");
-                } else {
-                  setStatus("pending");
-                }
-              }}
-              data-nav="paidAmount"
-              className="flat-input"
-              min="0"
-              placeholder="0"
             />
           </div>
           <div>
@@ -1478,12 +1536,12 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
                 const newStatus = e.target.value;
                 setStatus(newStatus);
                 if (newStatus === "paid") {
-                  setPaidAmount(totalAmount);
+                  setPaymentHistory([{ date: new Date().toISOString(), amount: totalAmount, method: bill?.payment_method || "cash" }]);
                 } else if (newStatus === "pending" || newStatus === "draft" || newStatus === "cancelled") {
-                  setPaidAmount(0);
+                  setPaymentHistory([]);
                 } else if (newStatus === "partially_paid") {
                   if (paidAmount <= 0 || paidAmount >= totalAmount) {
-                    setPaidAmount(Math.round((totalAmount / 2) * 100) / 100);
+                    setPaymentHistory([{ date: new Date().toISOString(), amount: Math.round((totalAmount / 2) * 100) / 100, method: bill?.payment_method || "cash" }]);
                   }
                 }
               }}
