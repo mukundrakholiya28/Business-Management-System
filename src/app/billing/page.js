@@ -1748,7 +1748,7 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
                     min="1"
                     onChange={(e) => updateItem(index, "quantity", Number(e.target.value))}
                     data-nav={`item-qty-${index}`}
-                    className="flat-input flex-1 sm:w-20"
+                    className="flat-input w-20 shrink-0"
                   />
                   <input
                     type="number"
@@ -1757,7 +1757,7 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
                     min="0"
                     onChange={(e) => updateItem(index, "unit_price", Number(e.target.value))}
                     data-nav={`item-price-${index}`}
-                    className="flat-input flex-2 sm:w-28"
+                    className="flat-input flex-grow sm:w-28"
                   />
                   <div className="flex items-center gap-2 shrink-0 min-w-[80px] justify-end">
                     <span className="text-sm font-semibold text-gray-700 tabular-nums">

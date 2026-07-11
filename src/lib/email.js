@@ -1,4 +1,5 @@
 import { formatVehicleNumber } from "@/lib/helpers";
+import { supabase } from "@/lib/supabase";
 
 /**
  * Send an invoice email via the internal API route.
@@ -17,9 +18,16 @@ export async function sendInvoiceEmail({ bill, items, customer, vehicle, pdfBase
     ? `${formatVehicleNumber(vehicle.vehicle_number)}${vehicle.make ? ` — ${vehicle.make} ${vehicle.model || ""}`.trim() : ""}`
     : "—";
 
+  // Get current session token for API authorization
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+
   const res = await fetch("/api/send-email", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { 
+      "Content-Type": "application/json",
+      ...(token ? { "Authorization": `Bearer ${token}` } : {})
+    },
     body: JSON.stringify({
       to:            customer.email,
       customerName:  customer.name,

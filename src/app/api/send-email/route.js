@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
+import { authenticateRequest } from "@/lib/supabase";
+import { sanitizeObject } from "@/lib/helpers";
+import { logger } from "@/lib/logger";
 
 const SMTP_HOST   = process.env.SMTP_HOST || "smtp.resend.com";
 const SMTP_PORT   = parseInt(process.env.SMTP_PORT || "465", 10);
@@ -28,7 +31,13 @@ const FROM        = process.env.SMTP_FROM || process.env.RESEND_FROM_EMAIL || "S
  */
 export async function POST(request) {
   try {
-    const body = await request.json();
+    const authResult = await authenticateRequest(request);
+    if (!authResult.authenticated) {
+      return NextResponse.json({ error: authResult.error }, { status: 401 });
+    }
+
+    const rawBody = await request.json();
+    const body = sanitizeObject(rawBody);
     const {
       to, customerName, invoiceNumber, date,
       vehicle, items = [],
@@ -232,7 +241,7 @@ export async function POST(request) {
     // If unverified domain error, retry using default sandbox onboarding email
     if (sendResult.error && (sendResult.error.message || "").includes("domain is not verified")) {
       const sandboxFrom = "Shree Royal Car <onboarding@resend.dev>";
-      console.warn(`[Resend] Unverified domain in FROM address: ${FROM}. Retrying with default sandbox: ${sandboxFrom}`);
+      logger.warn("Unverified domain in Resend FROM address. Retrying with default sandbox onboarding email.", { from: FROM, sandboxFrom });
       sendResult = await executeSend(sandboxFrom, to);
     }
 
@@ -244,7 +253,7 @@ export async function POST(request) {
         if (match && match[1]) {
           const authorizedEmail = match[1];
           const sandboxFrom = "Shree Royal Car <onboarding@resend.dev>";
-          console.warn(`[Resend Sandbox] Redirecting email to authorized address: ${authorizedEmail} (originally to: ${to})`);
+          logger.warn("Resend sandbox restriction. Redirecting email to authorized address.", { authorizedEmail, originalRecipient: to });
 
           const retryResult = await executeSend(sandboxFrom, authorizedEmail, true);
 
@@ -257,19 +266,19 @@ export async function POST(request) {
               message: `Email was redirected to ${authorizedEmail} because Resend is in testing mode.`
             });
           } else {
-            console.error("[Resend Sandbox retry error]", retryResult.error);
+            logger.error("Resend Sandbox retry error", retryResult.error);
             return NextResponse.json({ error: retryResult.error.message }, { status: 400 });
           }
         }
       }
 
-      console.error("[Resend error]", sendResult.error);
+      logger.error("Resend email delivery failed", sendResult.error);
       return NextResponse.json({ error: sendResult.error.message }, { status: 400 });
     }
 
     return NextResponse.json({ success: true, emailId: sendResult.data?.id });
   } catch (err) {
-    console.error("[send-email route error]", err);
+    logger.error("Uncaught exception in send-email endpoint", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

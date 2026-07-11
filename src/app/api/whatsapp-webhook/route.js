@@ -13,6 +13,8 @@
  */
 
 import { NextResponse } from "next/server";
+import crypto from "crypto";
+import { logger } from "@/lib/logger";
 
 // ─── GET — verification handshake ────────────────────────────────────────────
 
@@ -26,17 +28,17 @@ export async function GET(request) {
   const verifyToken = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN;
 
   if (!verifyToken) {
-    console.error("[whatsapp-webhook] WHATSAPP_WEBHOOK_VERIFY_TOKEN is not set");
+    logger.error("WHATSAPP_WEBHOOK_VERIFY_TOKEN is not set in environment");
     return new Response("Webhook verify token not configured", { status: 500 });
   }
 
   if (mode === "subscribe" && token === verifyToken) {
-    console.log("[whatsapp-webhook] Webhook verified successfully");
+    logger.info("Webhook verified successfully with Meta handshake");
     // Meta requires a plain-text response with the challenge value
     return new Response(challenge, { status: 200 });
   }
 
-  console.warn("[whatsapp-webhook] Verification failed — token mismatch or wrong mode");
+  logger.warn("Verification failed — token mismatch or wrong mode");
   return new Response("Forbidden", { status: 403 });
 }
 
@@ -44,7 +46,30 @@ export async function GET(request) {
 
 export async function POST(request) {
   try {
-    const body = await request.json();
+    const signature = request.headers.get("x-hub-signature-256");
+    const rawBody = await request.text();
+    
+    // Validate signature if app secret is configured
+    const appSecret = process.env.WHATSAPP_APP_SECRET;
+    if (appSecret) {
+      if (!signature) {
+        console.warn("[whatsapp-webhook] Signature verification failed: Missing signature");
+        return new Response("Unauthorized: Missing signature", { status: 401 });
+      }
+      const elements = signature.split("=");
+      const signatureHash = elements[1];
+      const expectedHash = crypto
+        .createHmac("sha256", appSecret)
+        .update(rawBody)
+        .digest("hex");
+      
+      if (signatureHash !== expectedHash) {
+        console.warn("[whatsapp-webhook] Signature verification failed: Hash mismatch");
+        return new Response("Unauthorized: Invalid signature", { status: 401 });
+      }
+    }
+
+    const body = JSON.parse(rawBody);
 
     // Meta always wraps payloads in { object: "whatsapp_business_account", entry: [...] }
     if (body.object !== "whatsapp_business_account") {
@@ -70,7 +95,7 @@ export async function POST(request) {
     // Always respond 200 quickly so Meta doesn't retry
     return NextResponse.json({ status: "ok" }, { status: 200 });
   } catch (err) {
-    console.error("[whatsapp-webhook] Error processing payload:", err);
+    logger.error("Error processing WhatsApp webhook payload", err);
     // Still return 200 to prevent Meta from disabling the webhook
     return NextResponse.json({ status: "error", message: err.message }, { status: 200 });
   }
@@ -116,9 +141,7 @@ async function handleIncomingMessage(message, metadata, contacts) {
       text = `[${message.type}]`;
   }
 
-  console.log(
-    `[whatsapp-webhook] Message from ${senderName} (${sender}) at ${timestamp}: ${text}`
-  );
+  logger.info("Incoming WhatsApp message logged", { senderName, sender, timestamp, text });
 
   // TODO: persist to Supabase, trigger a reply, update order status, etc.
   // Example:
@@ -144,13 +167,9 @@ async function handleStatusUpdate(status) {
   if (state === "failed") {
     const errCode = errors?.[0]?.code;
     const errMsg  = errors?.[0]?.message;
-    console.error(
-      `[whatsapp-webhook] Message ${messageId} to ${recipient_id} FAILED at ${ts}: [${errCode}] ${errMsg}`
-    );
+    logger.error("WhatsApp message status update FAILED", new Error(errMsg || "Unknown Error"), { messageId, recipient_id, errCode, timestamp: ts });
   } else {
-    console.log(
-      `[whatsapp-webhook] Message ${messageId} to ${recipient_id} — ${state} at ${ts}`
-    );
+    logger.info("WhatsApp message status update received", { messageId, recipient_id, state, timestamp: ts });
   }
 
   // TODO: update message status in your database

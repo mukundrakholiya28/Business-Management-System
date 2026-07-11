@@ -258,37 +258,73 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
   console.log("isEditing:", isEditing);
   console.log("Frontend value (bill.created_at):", bill.created_at);
 
-  // items === undefined  → status-only update, don't touch line items
-  // items === [] | [...]  → replace line items
   const itemsProvided = items !== undefined && items !== null;
 
-  const itemPayload = itemsProvided
-    ? (items || [])
-        .filter((i) => i.description?.trim())
-        .map((i, index) => ({
-          description: i.description,
-          quantity:    i.quantity,
-          unit_price:  i.unit_price,
-          total_price: i.quantity * i.unit_price,
-          sort_order:  index,
-        }))
-    : null;
+  // Recalculate totals if items are provided (server-side validation)
+  let subtotal = Number(bill.subtotal || 0);
+  let discount = Number(bill.discount || 0);
+  let tax_amount = Number(bill.tax_amount || 0);
+  let total_amount = Number(bill.total_amount || 0);
+  let itemPayload = null;
+
+  if (itemsProvided) {
+    if (!Array.isArray(items)) throw new Error("Invalid items format.");
+    subtotal = 0;
+    const cleanItems = [];
+    
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (!item.description?.trim()) continue;
+      
+      const qty = Math.max(0, Number(item.quantity || 0));
+      const price = Math.max(0, Number(item.unit_price || 0));
+      const total = Math.round(qty * price * 100) / 100;
+      
+      subtotal += total;
+      
+      cleanItems.push({
+        description: item.description.trim(),
+        quantity: qty,
+        unit_price: price,
+        total_price: total,
+        sort_order: i
+      });
+    }
+    
+    subtotal = Math.round(subtotal * 100) / 100;
+    discount = Math.max(0, Number(bill.discount || 0));
+    if (discount > subtotal) {
+      discount = subtotal;
+    }
+    
+    const taxableAmount = Math.max(0, subtotal - discount);
+    const gstRate = bill.gst_enabled ? Number(bill.gst_rate ?? 18) : 0;
+    tax_amount = Math.round(taxableAmount * (gstRate / 100) * 100) / 100;
+    total_amount = Math.round((taxableAmount + tax_amount) * 100) / 100;
+    itemPayload = cleanItems;
+  }
 
   // Sanitize and align status and paid_amount
   let status = bill.status;
   let paid_amount = Number(bill.paid_amount || 0);
   if (status === "paid") {
-    paid_amount = Number(bill.total_amount);
+    paid_amount = total_amount;
   } else if (status === "pending" || status === "draft" || status === "cancelled") {
     paid_amount = 0;
   } else if (status === "partially_paid") {
     if (paid_amount <= 0) {
       paid_amount = 0;
       status = "pending";
-    } else if (paid_amount >= Number(bill.total_amount)) {
-      paid_amount = Number(bill.total_amount);
+    } else if (paid_amount >= total_amount) {
+      paid_amount = total_amount;
       status = "paid";
     }
+  }
+
+  // Get current payment history or init new one
+  let updatedHistory = bill.payment_history || [];
+  if (!Array.isArray(updatedHistory)) {
+    updatedHistory = [];
   }
 
   if (isEditing) {
@@ -299,7 +335,6 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
       .eq("id", bill.id)
       .single();
 
-    let updatedHistory = bill.payment_history || [];
     if (!itemsProvided && !fetchError && currentBill) {
       const currentPaid = Number(currentBill.paid_amount || 0);
       const nextPaid = Number(paid_amount);
@@ -326,119 +361,54 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
         }
       }
     }
-
-    const payload = {
-      customer_id:    customerId,
-      vehicle_id:     vehicleId,
-      kms_run:        bill.kms_run || null,
-      subtotal:       bill.subtotal,
-      tax_amount:     bill.tax_amount,
-      discount:       bill.discount,
-      total_amount:   bill.total_amount,
-      status:         status,
-      payment_method: bill.payment_method || null,
-      paid_amount:    paid_amount,
-      notes:          bill.notes,
-      pdf_url:        bill.pdf_url || null,
-      payment_history: updatedHistory,
-      ...(bill.created_at ? { created_at: bill.created_at } : {}),
-    };
-
-    console.log("Payload sent to DB (update):", payload);
-
-    const { data: updatedBills, error: updateError } = await supabase
-      .from("bills")
-      .update(payload)
-      .eq("id", bill.id)
-      .select("*");
-
-    if (updateError) throw new Error(updateError.message);
-
-    console.log("Database value returned (update):", updatedBills?.[0]?.created_at);
-    console.log("--- saveBillWithItems (END) ---");
-
-    if (itemPayload !== null) {
-      const { error: deleteError } = await supabase
-        .from("bill_items")
-        .delete()
-        .eq("bill_id", bill.id);
-      if (deleteError) throw new Error(deleteError.message);
-
-      if (itemPayload.length) {
-        const { error: insertItemsError } = await supabase
-          .from("bill_items")
-          .insert(itemPayload.map((i) => ({ ...i, bill_id: bill.id })));
-        if (insertItemsError) throw new Error(insertItemsError.message);
-      }
+  } else {
+    // New bill payment history initialization
+    if (paid_amount > 0 && updatedHistory.length === 0) {
+      updatedHistory = [{
+        date: new Date().toISOString(),
+        amount: paid_amount,
+        method: bill.payment_method || "cash"
+      }];
     }
-
-    return {
-      bill:  updatedBills?.[0] || { ...bill, customer_id: customerId, vehicle_id: vehicleId, status, paid_amount, payment_history: updatedHistory },
-      items: itemPayload ? itemPayload.map((i) => ({ ...i, bill_id: bill.id })) : [],
-    };
   }
 
-  // Create new bill — include user_id
-  const { id: _id, bill_number: clientBillNumber, gst_enabled: _ge, gst_rate: _gr, ...billPayload } = bill;
+  console.log("Saving bill via secure transaction RPC...");
 
-  // Calculate next bill_number to prevent sequence issues
-  let finalBillNumber = clientBillNumber;
-  if (!finalBillNumber) {
-    const { data: maxBill, error: maxError } = await supabase
-      .from("bills")
-      .select("bill_number")
-      .eq("user_id", userId)
-      .order("bill_number", { ascending: false })
-      .limit(1);
-    if (maxError) throw new Error(maxError.message);
-    const maxNum = maxBill?.[0]?.bill_number || 0;
-    finalBillNumber = maxNum + 1;
+  // Invoke RPC for transaction-safe database write
+  const { data: savedBillJson, error: rpcError } = await supabase.rpc(
+    "save_bill_with_items",
+    {
+      p_bill_id:         isEditing ? bill.id : null,
+      p_customer_id:     customerId,
+      p_vehicle_id:      vehicleId,
+      p_kms_run:         bill.kms_run ? Number(bill.kms_run) : null,
+      p_subtotal:        subtotal,
+      p_tax_amount:      tax_amount,
+      p_discount:        discount,
+      p_total_amount:    total_amount,
+      p_status:          status,
+      p_payment_method:  bill.payment_method || null,
+      p_paid_amount:     paid_amount,
+      p_notes:           bill.notes || null,
+      p_pdf_url:         bill.pdf_url || null,
+      p_payment_history: updatedHistory,
+      p_created_at:      bill.created_at || null,
+      p_items:           itemPayload, // JSONB array (or null to bypass update)
+      p_user_id:         userId,
+    }
+  );
+
+  if (rpcError) {
+    console.error("RPC Error saving bill:", rpcError);
+    throw new Error(rpcError.message);
   }
 
-  let finalPaymentHistory = bill.payment_history || [];
-  if (paid_amount > 0 && (!finalPaymentHistory || finalPaymentHistory.length === 0)) {
-    finalPaymentHistory = [{
-      date: new Date().toISOString(),
-      amount: paid_amount,
-      method: bill.payment_method || "cash"
-    }];
-  }
-
-  const insertPayload = {
-    ...billPayload,
-    customer_id: customerId,
-    vehicle_id: vehicleId,
-    bill_number: finalBillNumber,
-    status,
-    paid_amount,
-    user_id: userId,
-    payment_method: bill.payment_method || null,
-    payment_history: finalPaymentHistory
-  };
-
-  console.log("Payload sent to DB (insert):", insertPayload);
-
-  const { data: createdBill, error: createError } = await supabase
-    .from("bills")
-    .insert([insertPayload])
-    .select("*")
-    .single();
-  if (createError) throw new Error(createError.message);
-
-  console.log("Database value returned (insert):", createdBill?.created_at);
+  console.log("Saved bill result from RPC:", savedBillJson);
   console.log("--- saveBillWithItems (END) ---");
 
-  const newItemPayload = itemPayload ?? [];
-  if (newItemPayload.length) {
-    const { error: insertItemsError } = await supabase
-      .from("bill_items")
-      .insert(newItemPayload.map((i) => ({ ...i, bill_id: createdBill.id })));
-    if (insertItemsError) throw new Error(insertItemsError.message);
-  }
-
   return {
-    bill:  createdBill,
-    items: newItemPayload.map((i) => ({ ...i, bill_id: createdBill.id })),
+    bill:  savedBillJson,
+    items: itemPayload ? itemPayload.map((i) => ({ ...i, bill_id: savedBillJson.id })) : [],
   };
 }
 
@@ -676,4 +646,66 @@ export async function saveSalaryRecord(record) {
     .from("salary_records").insert([payload]).select("*").single();
   if (error) throw new Error(error.message);
   return data;
+}
+
+// ─── Paginated Loaders for Performance Optimization ───────────────────────────
+
+/**
+ * Loads a paginated list of bills including joined customer and vehicle details.
+ */
+export async function loadBillsPaginated({ page = 1, limit = 20, status = "all" }) {
+  if (!isSupabaseReady()) throw new Error("Supabase is not configured.");
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
+
+  let query = supabase
+    .from("bills")
+    .select("*, customer:customers(name, phone_number), vehicle:vehicles(vehicle_number)", { count: "exact" });
+
+  if (status !== "all") {
+    query = query.eq("status", status);
+  }
+
+  const { data, count, error } = await query
+    .order("bill_number", { ascending: false })
+    .range(from, to);
+
+  if (error) throw new Error(error.message);
+
+  return {
+    bills: data || [],
+    totalCount: count || 0,
+    totalPages: Math.ceil((count || 0) / limit),
+    currentPage: page
+  };
+}
+
+/**
+ * Loads a paginated list of customers.
+ */
+export async function loadCustomersPaginated({ page = 1, limit = 20, searchQuery = "" }) {
+  if (!isSupabaseReady()) throw new Error("Supabase is not configured.");
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
+
+  let query = supabase
+    .from("customers")
+    .select("*, vehicles(*)", { count: "exact" });
+
+  if (searchQuery.trim()) {
+    query = query.ilike("name", `%${searchQuery.trim()}%`);
+  }
+
+  const { data, count, error } = await query
+    .order("created_at", { ascending: false })
+    .range(from, to);
+
+  if (error) throw new Error(error.message);
+
+  return {
+    customers: data || [],
+    totalCount: count || 0,
+    totalPages: Math.ceil((count || 0) / limit),
+    currentPage: page
+  };
 }

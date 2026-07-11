@@ -1,3 +1,5 @@
+import { supabase } from "@/lib/supabase";
+
 /**
  * exportInvoicePDF
  * ─────────────────────────────────────────────────────────────────────────
@@ -20,10 +22,17 @@ export async function generateInvoicePDF({ bill, items, customer, vehicle }) {
       console.warn("Could not load business profile client-side:", e);
     }
 
+    // Get current session token for API authorization
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+
     // ── 1. Fetch rendered HTML ────────────────────────────────────────────
     const res = await fetch("/api/generate-invoice", {
       method:  "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+        ...(token ? { "Authorization": `Bearer ${token}` } : {})
+      },
       body:    JSON.stringify({ bill, items, customer, vehicle, profile }),
     });
 

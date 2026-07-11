@@ -160,3 +160,38 @@ export function normalizePhoneNumber(phone) {
   }
   return cleanPhone;
 }
+
+/**
+ * Basic HTML escaping to prevent XSS injection.
+ */
+export function sanitizeInputString(str) {
+  if (typeof str !== "string") return str;
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#x27;")
+    .replace(/\//g, "&#x2F;");
+}
+
+/**
+ * Recursively sanitizes all strings in an object/array.
+ */
+export function sanitizeObject(obj) {
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj === "string") {
+    return sanitizeInputString(obj);
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(sanitizeObject);
+  }
+  if (typeof obj === "object") {
+    const clean = {};
+    for (const key in obj) {
+      clean[key] = sanitizeObject(obj[key]);
+    }
+    return clean;
+  }
+  return obj;
+}

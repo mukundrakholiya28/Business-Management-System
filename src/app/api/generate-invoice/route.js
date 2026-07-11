@@ -13,7 +13,9 @@ import { NextResponse } from "next/server";
 import ejs from "ejs";
 import path from "path";
 import fs from "fs";
-import { createClient } from "@supabase/supabase-js";
+import { supabase, authenticateRequest } from "@/lib/supabase";
+import { sanitizeObject } from "@/lib/helpers";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
@@ -273,7 +275,7 @@ export async function GET() {
       headers: { "Content-Type": "text/html; charset=utf-8" },
     });
   } catch (err) {
-    console.error("[generate-invoice GET]", err);
+    logger.error("Error generating invoice template preview (GET)", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
@@ -282,17 +284,19 @@ export async function GET() {
 
 export async function POST(request) {
   try {
-    const { bill, items, customer, vehicle, profile: clientProfile } = await request.json();
+    const authResult = await authenticateRequest(request);
+    if (!authResult.authenticated) {
+      return NextResponse.json({ error: authResult.error }, { status: 401 });
+    }
+
+    const payload = await request.json();
+    const { bill, items, customer, vehicle, profile: clientProfile } = sanitizeObject(payload);
 
     let profile = clientProfile;
 
     if (!profile) {
       // Fetch business profile from Supabase (falls back to env vars if unavailable)
       try {
-        const supabase = createClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL,
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-        );
         const { data } = await supabase
           .from("business_profile")
           .select("*")
@@ -310,7 +314,7 @@ export async function POST(request) {
       headers: { "Content-Type": "text/html; charset=utf-8" },
     });
   } catch (err) {
-    console.error("[generate-invoice POST]", err);
+    logger.error("Error generating invoice template (POST)", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
