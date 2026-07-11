@@ -300,7 +300,7 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
       .single();
 
     let updatedHistory = bill.payment_history || [];
-    if (!fetchError && currentBill) {
+    if (!itemsProvided && !fetchError && currentBill) {
       const currentPaid = Number(currentBill.paid_amount || 0);
       const nextPaid = Number(paid_amount);
       updatedHistory = currentBill.payment_history || [];

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect } from "react";
 import Link from "next/link";
@@ -21,6 +21,17 @@ export default function Navbar() {
   useEffect(() => {
     document.documentElement.classList.remove("dark");
     localStorage.removeItem("theme");
+
+    // Prevent scroll wheel from changing numbers in active number input
+    const handleWheel = (e) => {
+      if (document.activeElement && document.activeElement.type === "number") {
+        document.activeElement.blur();
+      }
+    };
+    window.addEventListener("wheel", handleWheel, { passive: true });
+    return () => {
+      window.removeEventListener("wheel", handleWheel);
+    };
   }, []);
 
   return (
