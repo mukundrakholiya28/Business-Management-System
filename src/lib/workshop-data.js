@@ -56,39 +56,57 @@ export async function saveCustomerWithVehicles({ customer, vehicles }) {
 
   const userId = await getUserId();
 
-  if (!customer?.name || !customer?.phone_number) {
-    throw new Error("Customer name and phone number are required.");
+  const customerName = customer?.name?.trim() || "";
+  const customerPhone = customer?.phone_number ? normalizePhoneNumber(customer.phone_number) : "";
+
+  // Check for duplicate customer by phone number if provided
+  if (customerPhone) {
+    const { data: existingCustomers, error: customerLookupError } = await supabase
+      .from("customers")
+      .select("id, name")
+      .eq("phone_number", customerPhone)
+      .limit(1);
+    if (customerLookupError) throw new Error(customerLookupError.message);
+    if (existingCustomers?.length) {
+      throw new Error("Customer already exists with this phone number.");
+    }
   }
 
-  const validVehicles = (vehicles || []).filter((v) => v.vehicle_number?.trim());
-  if (!validVehicles.length) throw new Error("Add at least one vehicle.");
+  // Filter out completely empty vehicle inputs (allow saving a customer with no vehicles)
+  const validVehicles = (vehicles || []).filter((v) =>
+    v.vehicle_number?.trim() || v.make?.trim() || v.model?.trim() || v.year || v.color?.trim()
+  );
 
-  // Check for duplicate vehicle numbers within the batch
+  // Check for duplicate vehicle numbers within the batch (only for non-empty vehicle numbers)
   const seen = new Set();
   for (const v of validVehicles) {
-    const num = v.vehicle_number.trim().toUpperCase();
-    if (seen.has(num)) throw new Error("Duplicate vehicle number in the list.");
-    seen.add(num);
+    const num = v.vehicle_number?.trim().toUpperCase();
+    if (num) {
+      if (seen.has(num)) throw new Error("Duplicate vehicle number in the list.");
+      seen.add(num);
+    }
   }
 
-  // Check for duplicate vehicle numbers for THIS user
-  const { data: existingVehicles, error: lookupError } = await supabase
-    .from("vehicles")
-    .select("id, vehicle_number")
-    .in("vehicle_number", validVehicles.map((v) => v.vehicle_number.trim()));
+  // Check duplicate vehicle numbers across the database (only for non-empty vehicle numbers)
+  const nonTempVehicles = validVehicles.filter((v) => v.vehicle_number?.trim());
+  if (nonTempVehicles.length > 0) {
+    const { data: existingVehicles, error: lookupError } = await supabase
+      .from("vehicles")
+      .select("id, vehicle_number")
+      .in("vehicle_number", nonTempVehicles.map((v) => v.vehicle_number.trim().toUpperCase()));
 
-  if (lookupError) throw new Error(lookupError.message);
-  if (existingVehicles?.length) {
-    throw new Error(
-      `Vehicle number ${existingVehicles[0].vehicle_number} is already registered.`
-    );
+    if (lookupError) throw new Error(lookupError.message);
+    if (existingVehicles?.length) {
+      throw new Error(
+        `Vehicle number ${existingVehicles[0].vehicle_number} is already registered.`
+      );
+    }
   }
 
   // Insert customer — include user_id
   const { id: _id, ...customerPayload } = customer;
-  
-  // Normalize phone number
-  customerPayload.phone_number = normalizePhoneNumber(customerPayload.phone_number);
+  customerPayload.name = customerName;
+  customerPayload.phone_number = customerPhone;
 
   const { data: createdCustomer, error: customerError } = await supabase
     .from("customers")
@@ -98,23 +116,27 @@ export async function saveCustomerWithVehicles({ customer, vehicles }) {
   if (customerError) throw new Error(customerError.message);
 
   // Insert vehicles — include user_id
-  const vehiclePayload = validVehicles.map((v) => ({
-    customer_id:    createdCustomer.id,
-    user_id:        userId,
-    vehicle_number: v.vehicle_number.trim().toUpperCase(),
-    make:  v.make?.trim()  || null,
-    model: v.model?.trim() || null,
-    year:  v.year ? Number(v.year) : null,
-    color: v.color?.trim() || null,
-  }));
+  let createdVehicles = [];
+  if (validVehicles.length > 0) {
+    const vehiclePayload = validVehicles.map((v) => ({
+      customer_id:    createdCustomer.id,
+      user_id:        userId,
+      vehicle_number: v.vehicle_number?.trim() ? v.vehicle_number.trim().toUpperCase() : `TEMP-${generateId()}`,
+      make:  v.make?.trim()  || null,
+      model: v.model?.trim() || null,
+      year:  v.year ? Number(v.year) : null,
+      color: v.color?.trim() || null,
+    }));
 
-  const { data: createdVehicles, error: vehicleError } = await supabase
-    .from("vehicles")
-    .insert(vehiclePayload)
-    .select("*");
-  if (vehicleError) throw new Error(vehicleError.message);
+    const { data: inserted, error: vehicleError } = await supabase
+      .from("vehicles")
+      .insert(vehiclePayload)
+      .select("*");
+    if (vehicleError) throw new Error(vehicleError.message);
+    createdVehicles = inserted || [];
+  }
 
-  return { customer: createdCustomer, vehicles: createdVehicles || [] };
+  return { customer: createdCustomer, vehicles: createdVehicles };
 }
 
 export async function saveVehicle(vehicle, isEditing) {
@@ -122,12 +144,11 @@ export async function saveVehicle(vehicle, isEditing) {
   const userId = await getUserId();
 
   if (!vehicle.customer_id) throw new Error("Customer ID is required.");
-  if (!vehicle.vehicle_number?.trim()) throw new Error("Vehicle number is required.");
 
-  const cleanNumber = vehicle.vehicle_number.trim().toUpperCase();
+  const cleanNumber = vehicle.vehicle_number?.trim() ? vehicle.vehicle_number.trim().toUpperCase() : "";
 
-  // Check duplicate ONLY if we changed the vehicle number
-  if (!isEditing || (isEditing && cleanNumber !== vehicle.original_vehicle_number)) {
+  // Check duplicate ONLY if a vehicle number is entered and we changed it
+  if (cleanNumber && (!isEditing || cleanNumber !== vehicle.original_vehicle_number)) {
     const { data: existingVehicles, error: lookupError } = await supabase
       .from("vehicles")
       .select("id, vehicle_number")
@@ -142,7 +163,7 @@ export async function saveVehicle(vehicle, isEditing) {
   const payload = {
     customer_id:    vehicle.customer_id,
     user_id:        userId,
-    vehicle_number: cleanNumber,
+    vehicle_number: cleanNumber || `TEMP-${generateId()}`,
     make:           vehicle.make?.trim()  || null,
     model:          vehicle.model?.trim() || null,
     year:           vehicle.year ? Number(vehicle.year) : null,
@@ -175,6 +196,67 @@ export async function saveVehicle(vehicle, isEditing) {
 
 export async function saveBillWithItems({ bill, items, isEditing }) {
   if (!isSupabaseReady()) throw new Error("Supabase is not configured.");
+
+  const userId = await getUserId();
+
+  // If customer_id or vehicle_id is missing, default to Walk-in Customer / WALK-IN vehicle
+  let customerId = bill.customer_id;
+  let vehicleId = bill.vehicle_id;
+
+  if (!customerId) {
+    const { data: existing, error: findError } = await supabase
+      .from("customers")
+      .select("id")
+      .eq("phone_number", "910000000000")
+      .limit(1);
+    
+    if (existing && existing.length > 0) {
+      customerId = existing[0].id;
+    } else {
+      const { data: created, error: createError } = await supabase
+        .from("customers")
+        .insert([{
+          name: "Walk-in Customer",
+          phone_number: "910000000000",
+          user_id: userId,
+        }])
+        .select("id")
+        .single();
+      if (createError) throw new Error("Could not create default customer: " + createError.message);
+      customerId = created.id;
+    }
+  }
+
+  if (!vehicleId) {
+    const { data: existing, error: findError } = await supabase
+      .from("vehicles")
+      .select("id")
+      .eq("customer_id", customerId)
+      .eq("vehicle_number", "WALK-IN")
+      .limit(1);
+
+    if (existing && existing.length > 0) {
+      vehicleId = existing[0].id;
+    } else {
+      const { data: created, error: createError } = await supabase
+        .from("vehicles")
+        .insert([{
+          customer_id: customerId,
+          vehicle_number: "WALK-IN",
+          user_id: userId,
+          make: "General",
+          model: "Vehicle",
+        }])
+        .select("id")
+        .single();
+      if (createError) throw new Error("Could not create default vehicle: " + createError.message);
+      vehicleId = created.id;
+    }
+  }
+
+  console.log("--- saveBillWithItems (START) ---");
+  console.log("isEditing:", isEditing);
+  console.log("Frontend value (bill.created_at):", bill.created_at);
 
   // items === undefined  → status-only update, don't touch line items
   // items === [] | [...]  → replace line items
@@ -245,28 +327,35 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
       }
     }
 
+    const payload = {
+      customer_id:    customerId,
+      vehicle_id:     vehicleId,
+      kms_run:        bill.kms_run || null,
+      subtotal:       bill.subtotal,
+      tax_amount:     bill.tax_amount,
+      discount:       bill.discount,
+      total_amount:   bill.total_amount,
+      status:         status,
+      payment_method: bill.payment_method || null,
+      paid_amount:    paid_amount,
+      notes:          bill.notes,
+      pdf_url:        bill.pdf_url || null,
+      payment_history: updatedHistory,
+      ...(bill.created_at ? { created_at: bill.created_at } : {}),
+    };
+
+    console.log("Payload sent to DB (update):", payload);
+
     const { data: updatedBills, error: updateError } = await supabase
       .from("bills")
-      .update({
-        customer_id:    bill.customer_id,
-        vehicle_id:     bill.vehicle_id,
-        kms_run:        bill.kms_run || null,
-        subtotal:       bill.subtotal,
-        tax_amount:     bill.tax_amount,
-        discount:       bill.discount,
-        total_amount:   bill.total_amount,
-        status:         status,
-        payment_method: bill.payment_method || null,
-        paid_amount:    paid_amount,
-        notes:          bill.notes,
-        pdf_url:        bill.pdf_url || null,
-        payment_history: updatedHistory,
-        ...(bill.created_at ? { created_at: bill.created_at } : {}),
-      })
+      .update(payload)
       .eq("id", bill.id)
       .select("*");
 
     if (updateError) throw new Error(updateError.message);
+
+    console.log("Database value returned (update):", updatedBills?.[0]?.created_at);
+    console.log("--- saveBillWithItems (END) ---");
 
     if (itemPayload !== null) {
       const { error: deleteError } = await supabase
@@ -284,13 +373,12 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
     }
 
     return {
-      bill:  updatedBills?.[0] || { ...bill, status, paid_amount, payment_history: updatedHistory },
+      bill:  updatedBills?.[0] || { ...bill, customer_id: customerId, vehicle_id: vehicleId, status, paid_amount, payment_history: updatedHistory },
       items: itemPayload ? itemPayload.map((i) => ({ ...i, bill_id: bill.id })) : [],
     };
   }
 
   // Create new bill — include user_id
-  const userId = await getUserId();
   const { id: _id, bill_number: clientBillNumber, gst_enabled: _ge, gst_rate: _gr, ...billPayload } = bill;
 
   // Calculate next bill_number to prevent sequence issues
@@ -316,20 +404,29 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
     }];
   }
 
+  const insertPayload = {
+    ...billPayload,
+    customer_id: customerId,
+    vehicle_id: vehicleId,
+    bill_number: finalBillNumber,
+    status,
+    paid_amount,
+    user_id: userId,
+    payment_method: bill.payment_method || null,
+    payment_history: finalPaymentHistory
+  };
+
+  console.log("Payload sent to DB (insert):", insertPayload);
+
   const { data: createdBill, error: createError } = await supabase
     .from("bills")
-    .insert([{
-      ...billPayload,
-      bill_number: finalBillNumber,
-      status,
-      paid_amount,
-      user_id: userId,
-      payment_method: bill.payment_method || null,
-      payment_history: finalPaymentHistory
-    }])
+    .insert([insertPayload])
     .select("*")
     .single();
   if (createError) throw new Error(createError.message);
+
+  console.log("Database value returned (insert):", createdBill?.created_at);
+  console.log("--- saveBillWithItems (END) ---");
 
   const newItemPayload = itemPayload ?? [];
   if (newItemPayload.length) {

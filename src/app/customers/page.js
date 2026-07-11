@@ -276,27 +276,95 @@ function CustomerCreateModal({ onClose, onSave }) {
     setVehicles((prev) => prev.map((vehicle, itemIndex) => (itemIndex === index ? { ...vehicle, [field]: value } : vehicle)));
 
   const handleSubmit = async () => {
+    if (customerPhone.trim()) {
+      const cleanPhone = customerPhone.replace(/\D/g, "");
+      if (cleanPhone.length < 10 || cleanPhone.length > 15) {
+        alert("Phone number must be between 10 and 15 digits.");
+        return;
+      }
+    }
+    if (customerEmail.trim()) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(customerEmail.trim())) {
+        alert("Please enter a valid email address.");
+        return;
+      }
+    }
+    for (const v of vehicles) {
+      if (v.year) {
+        const yr = Number(v.year);
+        if (isNaN(yr) || yr < 1886 || yr > new Date().getFullYear() + 1) {
+          alert("Please enter a valid vehicle year.");
+          return;
+        }
+      }
+    }
+
     await onSave(
       {
         id: undefined,
-        name: customerName,
-        phone_number: customerPhone,
-        email: customerEmail,
-        address: customerAddress,
+        name: customerName.trim(),
+        phone_number: customerPhone.trim(),
+        email: customerEmail.trim(),
+        address: customerAddress.trim(),
         created_at: new Date().toISOString(),
       },
       vehicles
     );
   };
 
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter") {
+      const target = e.target;
+      const nav = target.getAttribute("data-nav");
+      if (!nav) return;
+
+      e.preventDefault();
+
+      if (nav === "customerName") {
+        const nextEl = document.querySelector('[data-nav="customerPhone"]');
+        if (nextEl) nextEl.focus();
+      } else if (nav === "customerPhone") {
+        const nextEl = document.querySelector('[data-nav="customerEmail"]');
+        if (nextEl) nextEl.focus();
+      } else if (nav === "customerEmail") {
+        const nextEl = document.querySelector('[data-nav="customerAddress"]');
+        if (nextEl) nextEl.focus();
+      } else if (nav === "customerAddress") {
+        const nextEl = document.querySelector('[data-nav="vehicle-num-0"]');
+        if (nextEl) nextEl.focus();
+      } else if (nav.startsWith("vehicle-num-")) {
+        const idx = parseInt(nav.replace("vehicle-num-", ""), 10);
+        const nextEl = document.querySelector(`[data-nav="vehicle-make-${idx}"]`);
+        if (nextEl) nextEl.focus();
+      } else if (nav.startsWith("vehicle-make-")) {
+        const idx = parseInt(nav.replace("vehicle-make-", ""), 10);
+        const nextEl = document.querySelector(`[data-nav="vehicle-model-${idx}"]`);
+        if (nextEl) nextEl.focus();
+      } else if (nav.startsWith("vehicle-model-")) {
+        const idx = parseInt(nav.replace("vehicle-model-", ""), 10);
+        const nextEl = document.querySelector(`[data-nav="vehicle-year-${idx}"]`);
+        if (nextEl) nextEl.focus();
+      } else if (nav.startsWith("vehicle-year-")) {
+        const idx = parseInt(nav.replace("vehicle-year-", ""), 10);
+        const nextEl = document.querySelector(`[data-nav="vehicle-num-${idx + 1}"]`);
+        if (nextEl) {
+          nextEl.focus();
+        } else {
+          handleSubmit();
+        }
+      }
+    }
+  };
+
   return (
     <Modal title="Add Customer" onClose={onClose} wide>
-      <div className="space-y-5">
+      <div className="space-y-5" onKeyDown={handleKeyDown}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="flat-input" placeholder="Customer name" />
-          <input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} className="flat-input" placeholder="Phone number" />
-          <input value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} className="flat-input" placeholder="Email" />
-          <input value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} className="flat-input" placeholder="Address" />
+          <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} data-nav="customerName" className="flat-input" placeholder="Customer name" />
+          <input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} data-nav="customerPhone" className="flat-input" placeholder="Phone number" />
+          <input value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} data-nav="customerEmail" className="flat-input" placeholder="Email" />
+          <input value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} data-nav="customerAddress" className="flat-input" placeholder="Address" />
         </div>
 
         <div>
@@ -304,11 +372,11 @@ function CustomerCreateModal({ onClose, onSave }) {
           <div className="space-y-2">
             {vehicles.map((vehicle, index) => (
               <div key={index} className="grid grid-cols-1 sm:grid-cols-5 gap-2 p-3 bg-gray-50 rounded-xl">
-                <input value={vehicle.vehicle_number} onChange={(e) => updateVehicle(index, "vehicle_number", e.target.value)} className="flat-input sm:col-span-2" placeholder="Car number" />
-                <input value={vehicle.make} onChange={(e) => updateVehicle(index, "make", e.target.value)} className="flat-input" placeholder="Make" />
-                <input value={vehicle.model} onChange={(e) => updateVehicle(index, "model", e.target.value)} className="flat-input" placeholder="Model" />
+                <input value={vehicle.vehicle_number} onChange={(e) => updateVehicle(index, "vehicle_number", e.target.value)} data-nav={`vehicle-num-${index}`} className="flat-input sm:col-span-2" placeholder="Car number" />
+                <input value={vehicle.make} onChange={(e) => updateVehicle(index, "make", e.target.value)} data-nav={`vehicle-make-${index}`} className="flat-input" placeholder="Make" />
+                <input value={vehicle.model} onChange={(e) => updateVehicle(index, "model", e.target.value)} data-nav={`vehicle-model-${index}`} className="flat-input" placeholder="Model" />
                 <div className="flex items-center gap-2">
-                  <input value={vehicle.year} onChange={(e) => updateVehicle(index, "year", e.target.value)} className="flat-input" placeholder="Year" />
+                  <input value={vehicle.year} onChange={(e) => updateVehicle(index, "year", e.target.value)} data-nav={`vehicle-year-${index}`} className="flat-input" placeholder="Year" />
                   {vehicles.length > 1 && (
                     <button onClick={() => removeVehicle(index)} className="flat-btn-ghost p-2 text-red-400">
                       <Plus size={14} strokeWidth={1.5} className="rotate-45" />
@@ -339,7 +407,17 @@ function CustomerEditModal({ customer, onClose, onSave }) {
   const [address, setAddress] = useState(customer.address || "");
 
   const handleSubmit = () => {
-    if (!name.trim() || !phone.trim()) return;
+    if (phone.trim()) {
+      const cleanPhone = phone.replace(/\D/g, "");
+      if (cleanPhone.length < 10 || cleanPhone.length > 15) {
+        alert("Phone number must be between 10 and 15 digits.");
+        return;
+      }
+    }
+    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      alert("Please enter a valid email address.");
+      return;
+    }
     onSave({ ...customer, name: name.trim(), phone_number: phone.trim(), email: email.trim(), address: address.trim() });
   };
 

@@ -106,10 +106,25 @@ export function normalizeSearch(str) {
 }
 
 /**
- * Strip hyphens from a vehicle number for display
+ * Get local YYYY-MM-DD date string from a Date object or ISO string,
+ * avoiding timezone conversions that shift the day.
+ */
+export function getLocalDateString(dateInput) {
+  if (!dateInput) return "";
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return "";
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Strip hyphens from a vehicle number for display,
+ * and hide temporary placeholders (TEMP-*).
  */
 export function formatVehicleNumber(num) {
-  if (!num) return "";
+  if (!num || num.startsWith("TEMP-")) return "";
   return num.replace(/-/g, "");
 }
 

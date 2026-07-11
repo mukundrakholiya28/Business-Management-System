@@ -8,6 +8,7 @@ import { SectionHeader, StatusBadge, StatusDot, EmptyState, Modal, StatusSelect,
 import {
   formatCurrency,
   formatDate,
+  getLocalDateString,
   generateId,
   normalizeSearch,
   formatVehicleNumber,
@@ -21,6 +22,7 @@ import {
   saveBillWithItems,
   saveCustomerWithVehicles,
   deleteBill,
+  saveVehicle,
 } from "@/lib/workshop-data";
 import {
   Plus,
@@ -787,6 +789,7 @@ function BillingPage() {
           onClose={() => setShowBillForm(false)}
           onSave={handleSaveBill}
           onCreateCustomer={handleCreateCustomer}
+          onAddVehicle={(newVeh) => setVehicles((prev) => [newVeh, ...prev])}
           bills={bills}
         />
       )}
@@ -999,7 +1002,7 @@ function BillDetailModal({ bill, items, customers, vehicles, onClose, onExportPD
   );
 }
 
-function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillItems, onClose, onSave, onCreateCustomer }) {
+function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillItems, onClose, onSave, onCreateCustomer, onAddVehicle }) {
   const isEditing = Boolean(bill);
   const [customerId, setCustomerId] = useState(bill?.customer_id || "");
   const [vehicleId, setVehicleId] = useState(bill?.vehicle_id || "");
@@ -1022,9 +1025,15 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
   const [status, setStatus] = useState(bill?.status || "draft");
   const [billDate, setBillDate] = useState(
     bill?.created_at
-      ? new Date(bill.created_at).toISOString().slice(0, 10)
-      : new Date().toISOString().slice(0, 10)
+      ? getLocalDateString(bill.created_at)
+      : getLocalDateString(new Date())
   );
+  const [showVehicleForm, setShowVehicleForm] = useState(false);
+  const [newVehicleNumber, setNewVehicleNumber] = useState("");
+  const [newVehicleMake, setNewVehicleMake] = useState("");
+  const [newVehicleModel, setNewVehicleModel] = useState("");
+  const [newVehicleYear, setNewVehicleYear] = useState("");
+  const [newVehicleColor, setNewVehicleColor] = useState("");
   const [gstEnabled, setGstEnabled] = useState(bill?.tax_amount > 0 ?? true);
   const [gstRate, setGstRate] = useState(bill?.gst_rate ?? 18);
   const [showCustomerForm, setShowCustomerForm] = useState(false);
@@ -1184,27 +1193,67 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
         total_price: item.quantity * item.unit_price,
       }));
 
-  const canSave = customerId && vehicleId && items.some((item) => item.description.trim());
+  const handleCreateVehicle = async () => {
+    if (!customerId) return;
+    if (newVehicleYear) {
+      const yr = Number(newVehicleYear);
+      if (isNaN(yr) || yr < 1886 || yr > new Date().getFullYear() + 1) {
+        alert("Please enter a valid vehicle year.");
+        return;
+      }
+    }
+    const cleanNumber = newVehicleNumber.trim().toUpperCase();
+    try {
+      const newVeh = await saveVehicle({
+        customer_id: customerId,
+        vehicle_number: cleanNumber,
+        make: newVehicleMake.trim() || null,
+        model: newVehicleModel.trim() || null,
+        year: newVehicleYear ? Number(newVehicleYear) : null,
+        color: newVehicleColor.trim() || null,
+      }, false);
+
+      if (newVeh) {
+        if (onAddVehicle) {
+          onAddVehicle(newVeh);
+        }
+        setVehicleId(newVeh.id);
+        setShowVehicleForm(false);
+        setNewVehicleNumber("");
+        setNewVehicleMake("");
+        setNewVehicleModel("");
+        setNewVehicleYear("");
+        setNewVehicleColor("");
+      }
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  const canSave = true;
 
   const handleSaveDraft = () => {
-    if (!canSave) return;
+    if (billDate && isNaN(new Date(billDate).getTime())) {
+      alert("Please enter a valid invoice date.");
+      return;
+    }
     const savedBill = buildBill("draft");
     onSave({ bill: savedBill, items: buildItems(savedBill.id), isEditing });
   };
 
   const handleSave = () => {
-    if (!canSave) return;
+    if (billDate && isNaN(new Date(billDate).getTime())) {
+      alert("Please enter a valid invoice date.");
+      return;
+    }
     const finalStatus = isEditing ? status : derivedStatus();
     const savedBill = buildBill(finalStatus);
     const savedItems = buildItems(savedBill.id);
-
-    // Removed automatic WhatsApp sending - user will use Send button instead
 
     onSave({ bill: savedBill, items: savedItems, isEditing });
   };
 
   const handleKeyDown = (e) => {
-    // Check if Numpad Plus was pressed
     if (e.code === "NumpadAdd") {
       e.preventDefault();
       addItem();
@@ -1216,16 +1265,12 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
       const target = e.target;
       const nav = target.getAttribute("data-nav");
       
-      // Don't intercept Enter if it's not one of our tracked inputs
       if (!nav) return;
 
-      // Handle dropdowns (Customer and Vehicle)
       if (nav === "customer" || nav === "vehicle") {
         if (!selectEnterCount.current[nav]) {
-          // First Enter on select: let it open, set count to 1
           selectEnterCount.current[nav] = 1;
         } else {
-          // Second Enter on select: move to next
           e.preventDefault();
           selectEnterCount.current[nav] = 0;
           
@@ -1272,18 +1317,81 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
         const nextEl = document.querySelector('[data-nav="notes"]');
         if (nextEl) nextEl.focus();
       } else if (nav === "notes") {
-        if (canSave) {
-          handleSave();
+        handleSave();
+      } else if (nav === "new-veh-num") {
+        const nextEl = document.querySelector('[data-nav="new-veh-make"]');
+        if (nextEl) nextEl.focus();
+      } else if (nav === "new-veh-make") {
+        const nextEl = document.querySelector('[data-nav="new-veh-model"]');
+        if (nextEl) nextEl.focus();
+      } else if (nav === "new-veh-model") {
+        const nextEl = document.querySelector('[data-nav="new-veh-year"]');
+        if (nextEl) nextEl.focus();
+      } else if (nav === "new-veh-year") {
+        const nextEl = document.querySelector('[data-nav="new-veh-color"]');
+        if (nextEl) nextEl.focus();
+      } else if (nav === "new-veh-color") {
+        handleCreateVehicle();
+      } else if (nav === "new-cust-name") {
+        const nextEl = document.querySelector('[data-nav="new-cust-phone"]');
+        if (nextEl) nextEl.focus();
+      } else if (nav === "new-cust-phone") {
+        const nextEl = document.querySelector('[data-nav="new-cust-email"]');
+        if (nextEl) nextEl.focus();
+      } else if (nav === "new-cust-email") {
+        const nextEl = document.querySelector('[data-nav="new-cust-address"]');
+        if (nextEl) nextEl.focus();
+      } else if (nav === "new-cust-address") {
+        const nextEl = document.querySelector('[data-nav="new-cust-veh-num-0"]');
+        if (nextEl) nextEl.focus();
+      } else if (nav.startsWith("new-cust-veh-num-")) {
+        const idx = parseInt(nav.replace("new-cust-veh-num-", ""), 10);
+        const nextEl = document.querySelector(`[data-nav="new-cust-veh-make-${idx}"]`);
+        if (nextEl) nextEl.focus();
+      } else if (nav.startsWith("new-cust-veh-make-")) {
+        const idx = parseInt(nav.replace("new-cust-veh-make-", ""), 10);
+        const nextEl = document.querySelector(`[data-nav="new-cust-veh-model-${idx}"]`);
+        if (nextEl) nextEl.focus();
+      } else if (nav.startsWith("new-cust-veh-model-")) {
+        const idx = parseInt(nav.replace("new-cust-veh-model-", ""), 10);
+        const nextEl = document.querySelector(`[data-nav="new-cust-veh-year-${idx}"]`);
+        if (nextEl) nextEl.focus();
+      } else if (nav.startsWith("new-cust-veh-year-")) {
+        const idx = parseInt(nav.replace("new-cust-veh-year-", ""), 10);
+        const nextEl = document.querySelector(`[data-nav="new-cust-veh-num-${idx + 1}"]`);
+        if (nextEl) {
+          nextEl.focus();
+        } else {
+          handleCreateCustomer();
         }
       }
     }
   };
 
   const handleCreateCustomer = async () => {
-    if (!customerName.trim() || !customerPhone.trim()) return;
-
-    const validVehicles = customerVehicles.filter((vehicle) => vehicle.vehicle_number.trim());
-    if (!validVehicles.length) return;
+    if (customerPhone.trim()) {
+      const cleanPhone = customerPhone.replace(/\D/g, "");
+      if (cleanPhone.length < 10 || cleanPhone.length > 15) {
+        alert("Phone number must be between 10 and 15 digits.");
+        return;
+      }
+    }
+    if (customerEmail.trim()) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(customerEmail.trim())) {
+        alert("Please enter a valid email address.");
+        return;
+      }
+    }
+    for (const v of customerVehicles) {
+      if (v.year) {
+        const yr = Number(v.year);
+        if (isNaN(yr) || yr < 1886 || yr > new Date().getFullYear() + 1) {
+          alert("Please enter a valid vehicle year.");
+          return;
+        }
+      }
+    }
 
     const customerIdValue = generateId();
     const newCustomer = {
@@ -1295,6 +1403,10 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
       created_at: new Date().toISOString(),
     };
 
+    const validVehicles = customerVehicles.filter((vehicle) =>
+      vehicle.vehicle_number.trim() || vehicle.make.trim() || vehicle.model.trim() || vehicle.year || vehicle.color.trim()
+    );
+
     const vehiclesForCustomer = validVehicles.map((vehicle) => ({
       id: generateId(),
       customer_id: customerIdValue,
@@ -1305,8 +1417,14 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
       color: vehicle.color.trim(),
     }));
 
-    const duplicateVehicle = vehiclesForCustomer.some((vehicle) => vehicles.some((existing) => existing.vehicle_number === vehicle.vehicle_number));
-    if (duplicateVehicle) return;
+    const nonTempVehicles = vehiclesForCustomer.filter((v) => v.vehicle_number);
+    if (nonTempVehicles.length > 0) {
+      const duplicateVehicle = nonTempVehicles.some((vehicle) => vehicles.some((existing) => existing.vehicle_number === vehicle.vehicle_number));
+      if (duplicateVehicle) {
+        alert("One of the vehicle numbers is already registered.");
+        return;
+      }
+    }
 
     const created = await onCreateCustomer(newCustomer, vehiclesForCustomer);
     if (!created) return;
@@ -1328,28 +1446,55 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
             <p className="flat-label mb-1">Customer</p>
             <p className="text-xs text-gray-400">A customer can own multiple cars, but each car belongs to one customer only.</p>
           </div>
-          <button onClick={() => setShowCustomerForm((prev) => !prev)} className="flat-btn text-xs">
-            <UserPlus size={14} strokeWidth={1.5} /> Add New Customer
-          </button>
+          <div className="flex gap-2">
+            {customerId && (
+              <button onClick={() => setShowVehicleForm((prev) => !prev)} className="flat-btn text-xs">
+                <Plus size={14} strokeWidth={1.5} /> Add Vehicle to Customer
+              </button>
+            )}
+            <button onClick={() => setShowCustomerForm((prev) => !prev)} className="flat-btn text-xs">
+              <UserPlus size={14} strokeWidth={1.5} /> Add New Customer
+            </button>
+          </div>
         </div>
+
+        {showVehicleForm && customerId && (
+          <div className="space-y-4 rounded-xl border border-gray-100 bg-gray-50 p-4 animate-fade-in">
+            <p className="text-xs font-semibold text-gray-700">Add Vehicle to {customers.find(c => c.id === customerId)?.name || "selected customer"}</p>
+            <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
+              <input value={newVehicleNumber} onChange={(e) => setNewVehicleNumber(e.target.value)} data-nav="new-veh-num" className="flat-input sm:col-span-2" placeholder="Car number" />
+              <input value={newVehicleMake} onChange={(e) => setNewVehicleMake(e.target.value)} data-nav="new-veh-make" className="flat-input" placeholder="Make" />
+              <input value={newVehicleModel} onChange={(e) => setNewVehicleModel(e.target.value)} data-nav="new-veh-model" className="flat-input" placeholder="Model" />
+              <div className="flex items-center gap-2">
+                <input value={newVehicleYear} onChange={(e) => setNewVehicleYear(e.target.value)} data-nav="new-veh-year" className="flat-input" placeholder="Year" />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
+              <input value={newVehicleColor} onChange={(e) => setNewVehicleColor(e.target.value)} data-nav="new-veh-color" className="flat-input sm:col-span-2" placeholder="Color" />
+              <button onClick={handleCreateVehicle} className="flat-btn-primary text-xs sm:col-span-3">
+                Add Vehicle
+              </button>
+            </div>
+          </div>
+        )}
 
         {showCustomerForm && (
           <div className="space-y-4 rounded-xl border border-gray-100 bg-gray-50 p-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="flat-input" placeholder="Customer name" />
-              <input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} className="flat-input" placeholder="Phone number" />
-              <input value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} className="flat-input" placeholder="Email" />
-              <input value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} className="flat-input" placeholder="Address" />
+              <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} data-nav="new-cust-name" className="flat-input" placeholder="Customer name" />
+              <input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} data-nav="new-cust-phone" className="flat-input" placeholder="Phone number" />
+              <input value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} data-nav="new-cust-email" className="flat-input" placeholder="Email" />
+              <input value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} data-nav="new-cust-address" className="flat-input" placeholder="Address" />
             </div>
 
             <div className="space-y-2">
               {customerVehicles.map((vehicle, index) => (
                 <div key={index} className="grid grid-cols-1 sm:grid-cols-5 gap-2">
-                  <input value={vehicle.vehicle_number} onChange={(e) => updateCustomerVehicle(index, "vehicle_number", e.target.value)} className="flat-input sm:col-span-2" placeholder="Car number" />
-                  <input value={vehicle.make} onChange={(e) => updateCustomerVehicle(index, "make", e.target.value)} className="flat-input" placeholder="Make" />
-                  <input value={vehicle.model} onChange={(e) => updateCustomerVehicle(index, "model", e.target.value)} className="flat-input" placeholder="Model" />
+                  <input value={vehicle.vehicle_number} onChange={(e) => updateCustomerVehicle(index, "vehicle_number", e.target.value)} data-nav={`new-cust-veh-num-${index}`} className="flat-input sm:col-span-2" placeholder="Car number" />
+                  <input value={vehicle.make} onChange={(e) => updateCustomerVehicle(index, "make", e.target.value)} data-nav={`new-cust-veh-make-${index}`} className="flat-input" placeholder="Make" />
+                  <input value={vehicle.model} onChange={(e) => updateCustomerVehicle(index, "model", e.target.value)} data-nav={`new-cust-veh-model-${index}`} className="flat-input" placeholder="Model" />
                   <div className="flex items-center gap-2">
-                    <input value={vehicle.year} onChange={(e) => updateCustomerVehicle(index, "year", e.target.value)} className="flat-input" placeholder="Year" />
+                    <input value={vehicle.year} onChange={(e) => updateCustomerVehicle(index, "year", e.target.value)} data-nav={`new-cust-veh-year-${index}`} className="flat-input" placeholder="Year" />
                     {customerVehicles.length > 1 && (
                       <button onClick={() => removeCustomerVehicle(index)} className="flat-btn-ghost p-2 text-red-400">
                         <Trash2 size={14} strokeWidth={1.5} />
@@ -1502,7 +1647,7 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
             <span className="flat-label block">Payment Parts / History</span>
             <button
               type="button"
-              onClick={() => setPaymentHistory(prev => [...prev, { date: new Date().toISOString().slice(0, 10), amount: 0, method: "cash" }])}
+              onClick={() => setPaymentHistory(prev => [...prev, { date: getLocalDateString(new Date()), amount: 0, method: "cash" }])}
               className="flat-btn text-xs px-2 py-1"
             >
               + Add Payment Part
@@ -1516,10 +1661,10 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
                 <div key={pIdx} className="flex gap-2 items-center flex-wrap sm:flex-nowrap bg-white p-2.5 rounded-lg border border-gray-100 shadow-sm">
                   <input
                     type="date"
-                    value={pay.date ? pay.date.slice(0, 10) : ""}
+                    value={pay.date ? getLocalDateString(pay.date) : ""}
                     onChange={(e) => {
                       const val = e.target.value;
-                      setPaymentHistory(prev => prev.map((p, idx) => idx === pIdx ? { ...p, date: val ? new Date(val + "T12:00:00").toISOString() : p.date } : p));
+                      setPaymentHistory(prev => prev.map((p, idx) => idx === pIdx ? { ...p, date: val ? new Date(val + "T00:00:00").toISOString() : p.date } : p));
                     }}
                     className="flat-input text-xs !w-full sm:!w-40"
                   />
