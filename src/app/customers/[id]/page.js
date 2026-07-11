@@ -1418,14 +1418,14 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
             <p className="text-xs font-semibold text-gray-700">Add Vehicle to {customers.find(c => c.id === customerId)?.name || "selected customer"}</p>
             <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
               <input value={newVehicleNumber} onChange={(e) => setNewVehicleNumber(e.target.value)} data-nav="new-veh-num" className="flat-input sm:col-span-2" placeholder="Car number" />
-              <input value={newVehicleMake} onChange={(e) => setNewVehicleMake(e.target.value)} data-nav="new-veh-make" className="flat-input" placeholder="Make" />
-              <input value={newVehicleModel} onChange={(e) => setNewVehicleModel(e.target.value)} data-nav="new-veh-model" className="flat-input" placeholder="Model" />
+              <input value={newVehicleMake} onChange={(e) => setNewVehicleMake(e.target.value)} data-nav="new-veh-make" className="flat-input" placeholder="Make (optional)" />
+              <input value={newVehicleModel} onChange={(e) => setNewVehicleModel(e.target.value)} data-nav="new-veh-model" className="flat-input" placeholder="Model (optional)" />
               <div className="flex items-center gap-2">
-                <input value={newVehicleYear} onChange={(e) => setNewVehicleYear(e.target.value)} data-nav="new-veh-year" className="flat-input" placeholder="Year" />
+                <input value={newVehicleYear} onChange={(e) => setNewVehicleYear(e.target.value)} data-nav="new-veh-year" className="flat-input" placeholder="Year (optional)" />
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
-              <input value={newVehicleColor} onChange={(e) => setNewVehicleColor(e.target.value)} data-nav="new-veh-color" className="flat-input sm:col-span-2" placeholder="Color" />
+              <input value={newVehicleColor} onChange={(e) => setNewVehicleColor(e.target.value)} data-nav="new-veh-color" className="flat-input sm:col-span-2" placeholder="Color (optional)" />
               <button onClick={handleCreateVehicle} className="flat-btn-primary text-xs sm:col-span-3">
                 Add Vehicle
               </button>

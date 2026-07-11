@@ -362,9 +362,9 @@ function CustomerCreateModal({ onClose, onSave }) {
       <div className="space-y-5" onKeyDown={handleKeyDown}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} data-nav="customerName" className="flat-input" placeholder="Customer name" />
-          <input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} data-nav="customerPhone" className="flat-input" placeholder="Phone number" />
-          <input value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} data-nav="customerEmail" className="flat-input" placeholder="Email" />
-          <input value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} data-nav="customerAddress" className="flat-input" placeholder="Address" />
+          <input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} data-nav="customerPhone" className="flat-input" placeholder="Phone number (optional)" />
+          <input value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} data-nav="customerEmail" className="flat-input" placeholder="Email (optional)" />
+          <input value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} data-nav="customerAddress" className="flat-input" placeholder="Address (optional)" />
         </div>
 
         <div>
@@ -373,10 +373,10 @@ function CustomerCreateModal({ onClose, onSave }) {
             {vehicles.map((vehicle, index) => (
               <div key={index} className="grid grid-cols-1 sm:grid-cols-5 gap-2 p-3 bg-gray-50 rounded-xl">
                 <input value={vehicle.vehicle_number} onChange={(e) => updateVehicle(index, "vehicle_number", e.target.value)} data-nav={`vehicle-num-${index}`} className="flat-input sm:col-span-2" placeholder="Car number" />
-                <input value={vehicle.make} onChange={(e) => updateVehicle(index, "make", e.target.value)} data-nav={`vehicle-make-${index}`} className="flat-input" placeholder="Make" />
-                <input value={vehicle.model} onChange={(e) => updateVehicle(index, "model", e.target.value)} data-nav={`vehicle-model-${index}`} className="flat-input" placeholder="Model" />
+                <input value={vehicle.make} onChange={(e) => updateVehicle(index, "make", e.target.value)} data-nav={`vehicle-make-${index}`} className="flat-input" placeholder="Make (optional)" />
+                <input value={vehicle.model} onChange={(e) => updateVehicle(index, "model", e.target.value)} data-nav={`vehicle-model-${index}`} className="flat-input" placeholder="Model (optional)" />
                 <div className="flex items-center gap-2">
-                  <input value={vehicle.year} onChange={(e) => updateVehicle(index, "year", e.target.value)} data-nav={`vehicle-year-${index}`} className="flat-input" placeholder="Year" />
+                  <input value={vehicle.year} onChange={(e) => updateVehicle(index, "year", e.target.value)} data-nav={`vehicle-year-${index}`} className="flat-input" placeholder="Year (optional)" />
                   {vehicles.length > 1 && (
                     <button onClick={() => removeVehicle(index)} className="flat-btn-ghost p-2 text-red-400">
                       <Plus size={14} strokeWidth={1.5} className="rotate-45" />
@@ -426,9 +426,9 @@ function CustomerEditModal({ customer, onClose, onSave }) {
       <div className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <input value={name}    onChange={(e) => setName(e.target.value)}    className="flat-input" placeholder="Customer name" />
-          <input value={phone}   onChange={(e) => setPhone(e.target.value)}   className="flat-input" placeholder="Phone number" />
-          <input value={email}   onChange={(e) => setEmail(e.target.value)}   className="flat-input" placeholder="Email" />
-          <input value={address} onChange={(e) => setAddress(e.target.value)} className="flat-input" placeholder="Address" />
+          <input value={phone}   onChange={(e) => setPhone(e.target.value)}   className="flat-input" placeholder="Phone number (optional)" />
+          <input value={email}   onChange={(e) => setEmail(e.target.value)}   className="flat-input" placeholder="Email (optional)" />
+          <input value={address} onChange={(e) => setAddress(e.target.value)} className="flat-input" placeholder="Address (optional)" />
         </div>
         <div className="flex justify-end gap-2">
           <button onClick={onClose}       className="flat-btn">Cancel</button>

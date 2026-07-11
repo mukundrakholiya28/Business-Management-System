@@ -1507,14 +1507,14 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
             <p className="text-xs font-semibold text-gray-700">Add Vehicle to {customers.find(c => c.id === customerId)?.name || "selected customer"}</p>
             <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
               <input value={newVehicleNumber} onChange={(e) => setNewVehicleNumber(e.target.value)} data-nav="new-veh-num" className="flat-input sm:col-span-2" placeholder="Car number" />
-              <input value={newVehicleMake} onChange={(e) => setNewVehicleMake(e.target.value)} data-nav="new-veh-make" className="flat-input" placeholder="Make" />
-              <input value={newVehicleModel} onChange={(e) => setNewVehicleModel(e.target.value)} data-nav="new-veh-model" className="flat-input" placeholder="Model" />
+              <input value={newVehicleMake} onChange={(e) => setNewVehicleMake(e.target.value)} data-nav="new-veh-make" className="flat-input" placeholder="Make (optional)" />
+              <input value={newVehicleModel} onChange={(e) => setNewVehicleModel(e.target.value)} data-nav="new-veh-model" className="flat-input" placeholder="Model (optional)" />
               <div className="flex items-center gap-2">
-                <input value={newVehicleYear} onChange={(e) => setNewVehicleYear(e.target.value)} data-nav="new-veh-year" className="flat-input" placeholder="Year" />
+                <input value={newVehicleYear} onChange={(e) => setNewVehicleYear(e.target.value)} data-nav="new-veh-year" className="flat-input" placeholder="Year (optional)" />
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
-              <input value={newVehicleColor} onChange={(e) => setNewVehicleColor(e.target.value)} data-nav="new-veh-color" className="flat-input sm:col-span-2" placeholder="Color" />
+              <input value={newVehicleColor} onChange={(e) => setNewVehicleColor(e.target.value)} data-nav="new-veh-color" className="flat-input sm:col-span-2" placeholder="Color (optional)" />
               <button onClick={handleCreateVehicle} className="flat-btn-primary text-xs sm:col-span-3">
                 Add Vehicle
               </button>
@@ -1526,19 +1526,19 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
           <div className="space-y-4 rounded-xl border border-gray-100 bg-gray-50 p-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} data-nav="new-cust-name" className="flat-input" placeholder="Customer name" />
-              <input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} data-nav="new-cust-phone" className="flat-input" placeholder="Phone number" />
-              <input value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} data-nav="new-cust-email" className="flat-input" placeholder="Email" />
-              <input value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} data-nav="new-cust-address" className="flat-input" placeholder="Address" />
+              <input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} data-nav="new-cust-phone" className="flat-input" placeholder="Phone number (optional)" />
+              <input value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} data-nav="new-cust-email" className="flat-input" placeholder="Email (optional)" />
+              <input value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} data-nav="new-cust-address" className="flat-input" placeholder="Address (optional)" />
             </div>
 
             <div className="space-y-2">
               {customerVehicles.map((vehicle, index) => (
                 <div key={index} className="grid grid-cols-1 sm:grid-cols-5 gap-2">
                   <input value={vehicle.vehicle_number} onChange={(e) => updateCustomerVehicle(index, "vehicle_number", e.target.value)} data-nav={`new-cust-veh-num-${index}`} className="flat-input sm:col-span-2" placeholder="Car number" />
-                  <input value={vehicle.make} onChange={(e) => updateCustomerVehicle(index, "make", e.target.value)} data-nav={`new-cust-veh-make-${index}`} className="flat-input" placeholder="Make" />
-                  <input value={vehicle.model} onChange={(e) => updateCustomerVehicle(index, "model", e.target.value)} data-nav={`new-cust-veh-model-${index}`} className="flat-input" placeholder="Model" />
+                  <input value={vehicle.make} onChange={(e) => updateCustomerVehicle(index, "make", e.target.value)} data-nav={`new-cust-veh-make-${index}`} className="flat-input" placeholder="Make (optional)" />
+                  <input value={vehicle.model} onChange={(e) => updateCustomerVehicle(index, "model", e.target.value)} data-nav={`new-cust-veh-model-${index}`} className="flat-input" placeholder="Model (optional)" />
                   <div className="flex items-center gap-2">
-                    <input value={vehicle.year} onChange={(e) => updateCustomerVehicle(index, "year", e.target.value)} data-nav={`new-cust-veh-year-${index}`} className="flat-input" placeholder="Year" />
+                    <input value={vehicle.year} onChange={(e) => updateCustomerVehicle(index, "year", e.target.value)} data-nav={`new-cust-veh-year-${index}`} className="flat-input" placeholder="Year (optional)" />
                     {customerVehicles.length > 1 && (
                       <button onClick={() => removeCustomerVehicle(index)} className="flat-btn-ghost p-2 text-red-400">
                         <Trash2 size={14} strokeWidth={1.5} />
