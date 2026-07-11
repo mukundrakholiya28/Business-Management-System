@@ -372,7 +372,7 @@ function CustomerCreateModal({ onClose, onSave }) {
           <div className="space-y-2">
             {vehicles.map((vehicle, index) => (
               <div key={index} className="grid grid-cols-1 sm:grid-cols-5 gap-2 p-3 bg-gray-50 rounded-xl">
-                <input value={vehicle.vehicle_number} onChange={(e) => updateVehicle(index, "vehicle_number", e.target.value)} data-nav={`vehicle-num-${index}`} className="flat-input sm:col-span-2" placeholder="Car number" />
+                <input value={vehicle.vehicle_number} onChange={(e) => updateVehicle(index, "vehicle_number", e.target.value)} data-nav={`vehicle-num-${index}`} className="flat-input sm:col-span-2" placeholder="Car number (optional)" />
                 <input value={vehicle.make} onChange={(e) => updateVehicle(index, "make", e.target.value)} data-nav={`vehicle-make-${index}`} className="flat-input" placeholder="Make (optional)" />
                 <input value={vehicle.model} onChange={(e) => updateVehicle(index, "model", e.target.value)} data-nav={`vehicle-model-${index}`} className="flat-input" placeholder="Model (optional)" />
                 <div className="flex items-center gap-2">
