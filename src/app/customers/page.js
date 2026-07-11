@@ -232,6 +232,7 @@ export default function CustomersPage() {
 
       {showCreate && (
         <CustomerCreateModal
+          customers={customers}
           onClose={() => setShowCreate(false)}
           onSave={handleCreateCustomer}
         />
@@ -263,12 +264,18 @@ export default function CustomersPage() {
   );
 }
 
-function CustomerCreateModal({ onClose, onSave }) {
+function CustomerCreateModal({ customers = [], onClose, onSave }) {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
   const [vehicles, setVehicles] = useState([emptyVehicle()]);
+
+  const matchedExisting = useMemo(() => {
+    const q = customerName.toLowerCase().trim();
+    if (!q || q.length < 2) return [];
+    return (customers || []).filter(c => c.name && c.name.toLowerCase().includes(q));
+  }, [customerName, customers]);
 
   const addVehicle = () => setVehicles((prev) => [...prev, emptyVehicle()]);
   const removeVehicle = (index) => setVehicles((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
@@ -366,6 +373,20 @@ function CustomerCreateModal({ onClose, onSave }) {
           <input value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} data-nav="customerEmail" className="flat-input" placeholder="Email (optional)" />
           <input value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} data-nav="customerAddress" className="flat-input" placeholder="Address (optional)" />
         </div>
+
+        {matchedExisting.length > 0 && (
+          <div className="text-xs text-amber-700 bg-amber-50 p-3 rounded-xl border border-amber-100 animate-fade-in">
+            <span className="font-semibold block mb-1.5">⚠️ Similar customers already exist:</span>
+            <div className="flex flex-wrap gap-2">
+              {matchedExisting.map((c) => (
+                <div key={c.id} className="bg-white border border-amber-200 px-2.5 py-1 rounded-lg shadow-sm">
+                  <span className="font-medium text-gray-800">{c.name}</span>
+                  {c.phone_number && <span className="text-gray-500 ml-1">({c.phone_number})</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div>
           <SectionHeader title="Cars" subtitle="One customer can have multiple cars, but each car is linked to only one customer." />

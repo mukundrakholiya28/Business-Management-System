@@ -1045,6 +1045,11 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
   const [customerVehicles, setCustomerVehicles] = useState([
     { vehicle_number: "", make: "", model: "", year: "", color: "" },
   ]);
+  const matchedExisting = useMemo(() => {
+    const q = customerName.toLowerCase().trim();
+    if (!q || q.length < 2) return [];
+    return (customers || []).filter(c => c.name && c.name.toLowerCase().includes(q));
+  }, [customerName, customers]);
 
   const shouldFocusNewItem = useRef(false);
   const selectEnterCount = useRef({ customer: 0, vehicle: 0 });
@@ -1532,6 +1537,20 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
               <input value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} data-nav="new-cust-email" className="flat-input" placeholder="Email (optional)" />
               <input value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} data-nav="new-cust-address" className="flat-input" placeholder="Address (optional)" />
             </div>
+
+            {matchedExisting.length > 0 && (
+              <div className="text-xs text-amber-700 bg-amber-50 p-3 rounded-xl border border-amber-100 animate-fade-in">
+                <span className="font-semibold block mb-1.5">⚠️ Similar customers already exist:</span>
+                <div className="flex flex-wrap gap-2">
+                  {matchedExisting.map((c) => (
+                    <div key={c.id} className="bg-white border border-amber-200 px-2.5 py-1 rounded-lg shadow-sm">
+                      <span className="font-medium text-gray-800">{c.name}</span>
+                      {c.phone_number && <span className="text-gray-500 ml-1">({c.phone_number})</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="space-y-2">
               {customerVehicles.map((vehicle, index) => (
