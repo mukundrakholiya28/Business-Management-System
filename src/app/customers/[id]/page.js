@@ -1405,7 +1405,18 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
             </select>
           </div>
           <div>
-            <label className="flat-label block mb-1.5">Vehicle</label>
+            <div className="flex justify-between items-center mb-1.5">
+              <label className="flat-label block">Vehicle</label>
+              {customerId && (
+                <button
+                  type="button"
+                  onClick={() => setShowVehicleForm((prev) => !prev)}
+                  className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-0.5"
+                >
+                  <Plus size={12} /> Add Vehicle
+                </button>
+              )}
+            </div>
             <select
               value={vehicleId}
               onChange={(e) => setVehicleId(e.target.value)}
