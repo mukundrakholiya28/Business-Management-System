@@ -1831,7 +1831,6 @@ function CustomerEditModal({ customer, onClose, onSave }) {
   const [address, setAddress] = useState(customer.address || "");
 
   const handleSubmit = () => {
-    if (!name.trim() || !phone.trim()) return;
     onSave({ ...customer, name: name.trim(), phone_number: phone.trim(), email: email.trim(), address: address.trim() });
   };
 
@@ -1840,9 +1839,9 @@ function CustomerEditModal({ customer, onClose, onSave }) {
       <div className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <input value={name}    onChange={(e) => setName(e.target.value)}    className="flat-input" placeholder="Customer name" />
-          <input value={phone}   onChange={(e) => setPhone(e.target.value)}   className="flat-input" placeholder="Phone number" />
-          <input value={email}   onChange={(e) => setEmail(e.target.value)}   className="flat-input" placeholder="Email" />
-          <input value={address} onChange={(e) => setAddress(e.target.value)} className="flat-input" placeholder="Address" />
+          <input value={phone}   onChange={(e) => setPhone(e.target.value)}   className="flat-input" placeholder="Phone number (optional)" />
+          <input value={email}   onChange={(e) => setEmail(e.target.value)}   className="flat-input" placeholder="Email (optional)" />
+          <input value={address} onChange={(e) => setAddress(e.target.value)} className="flat-input" placeholder="Address (optional)" />
         </div>
         <div className="flex justify-end gap-2">
           <button onClick={onClose}      className="flat-btn">Cancel</button>
@@ -1865,10 +1864,6 @@ function VehicleModal({ customerId, vehicle, onClose, onSave }) {
 
   const handleSave = async (e) => {
     e.preventDefault();
-    if (!vehicleNumber.trim()) {
-      setError("Vehicle number is required");
-      return;
-    }
     setSaving(true);
     setError(null);
     try {
@@ -1903,13 +1898,12 @@ function VehicleModal({ customerId, vehicle, onClose, onSave }) {
           </div>
         )}
         <div>
-          <label className="flat-label block mb-1">Vehicle Number *</label>
+          <label className="flat-label block mb-1">Vehicle Number (optional)</label>
           <input
             type="text"
-            required
             value={vehicleNumber}
             onChange={(e) => setVehicleNumber(e.target.value.toUpperCase())}
-            placeholder="e.g. GJ01AB1234"
+            placeholder="e.g. GJ01AB1234 (optional)"
             className="flat-input"
           />
         </div>
@@ -1920,7 +1914,7 @@ function VehicleModal({ customerId, vehicle, onClose, onSave }) {
               type="text"
               value={make}
               onChange={(e) => setMake(e.target.value)}
-              placeholder="e.g. Hyundai"
+              placeholder="e.g. Hyundai (optional)"
               className="flat-input"
             />
           </div>
@@ -1930,7 +1924,7 @@ function VehicleModal({ customerId, vehicle, onClose, onSave }) {
               type="text"
               value={model}
               onChange={(e) => setModel(e.target.value)}
-              placeholder="e.g. i20"
+              placeholder="e.g. i20 (optional)"
               className="flat-input"
             />
           </div>
@@ -1942,7 +1936,7 @@ function VehicleModal({ customerId, vehicle, onClose, onSave }) {
               type="number"
               value={year}
               onChange={(e) => setYear(e.target.value)}
-              placeholder="e.g. 2021"
+              placeholder="e.g. 2021 (optional)"
               className="flat-input"
             />
           </div>
@@ -1952,7 +1946,7 @@ function VehicleModal({ customerId, vehicle, onClose, onSave }) {
               type="text"
               value={color}
               onChange={(e) => setColor(e.target.value)}
-              placeholder="e.g. White"
+              placeholder="e.g. White (optional)"
               className="flat-input"
             />
           </div>
