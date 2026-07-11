@@ -1066,14 +1066,15 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
 
   const filteredCustomers = useMemo(() => {
     const query = customerSearch.toLowerCase().trim();
-    if (!query) return customers;
-    return customers.filter((c) =>
-      c.name.toLowerCase().includes(query) ||
+    const list = customers || [];
+    if (!query) return list;
+    return list.filter((c) =>
+      (c.name && c.name.toLowerCase().includes(query)) ||
       (c.phone_number && c.phone_number.includes(query))
     );
   }, [customers, customerSearch]);
 
-  const selectedCustomer = customers.find((c) => c.id === customerId);
+  const selectedCustomer = (customers || []).find((c) => c.id === customerId);
 
   const [vehicleSearch, setVehicleSearch] = useState("");
   const [showVehicleDropdown, setShowVehicleDropdown] = useState(false);
@@ -1081,8 +1082,9 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
 
   const filteredVehicles = useMemo(() => {
     const query = vehicleSearch.toLowerCase().trim();
-    if (!query) return visibleVehicles;
-    return visibleVehicles.filter((v) =>
+    const list = visibleVehicles || [];
+    if (!query) return list;
+    return list.filter((v) =>
       (v.vehicle_number && v.vehicle_number.toLowerCase().includes(query)) ||
       (v.make && v.make.toLowerCase().includes(query)) ||
       (v.model && v.model.toLowerCase().includes(query))
