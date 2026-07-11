@@ -1100,6 +1100,49 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
   }, [items.length]);
 
   const visibleVehicles = vehicles.filter((v) => v.customer_id === customerId);
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const customerDropdownRef = useRef(null);
+
+  const filteredCustomers = useMemo(() => {
+    const query = customerSearch.toLowerCase().trim();
+    if (!query) return customers;
+    return customers.filter((c) =>
+      c.name.toLowerCase().includes(query) ||
+      (c.phone_number && c.phone_number.includes(query))
+    );
+  }, [customers, customerSearch]);
+
+  const selectedCustomer = customers.find((c) => c.id === customerId);
+
+  const [vehicleSearch, setVehicleSearch] = useState("");
+  const [showVehicleDropdown, setShowVehicleDropdown] = useState(false);
+  const vehicleDropdownRef = useRef(null);
+
+  const filteredVehicles = useMemo(() => {
+    const query = vehicleSearch.toLowerCase().trim();
+    if (!query) return visibleVehicles;
+    return visibleVehicles.filter((v) =>
+      (v.vehicle_number && v.vehicle_number.toLowerCase().includes(query)) ||
+      (v.make && v.make.toLowerCase().includes(query)) ||
+      (v.model && v.model.toLowerCase().includes(query))
+    );
+  }, [visibleVehicles, vehicleSearch]);
+
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (customerDropdownRef.current && !customerDropdownRef.current.contains(e.target)) {
+        setShowCustomerDropdown(false);
+        setCustomerSearch("");
+      }
+      if (vehicleDropdownRef.current && !vehicleDropdownRef.current.contains(e.target)) {
+        setShowVehicleDropdown(false);
+        setVehicleSearch("");
+      }
+    };
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, []);
   const addItem    = () => {
     setItems((p) => [...p, { description: "", quantity: 1, unit_price: 0 }]);
   };
@@ -1391,20 +1434,51 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
         )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
+          <div className="relative" ref={customerDropdownRef}>
             <label className="flat-label block mb-1.5">Customer</label>
-            <select
-              value={customerId}
-              onChange={(e) => { setCustomerId(e.target.value); setVehicleId(""); }}
-              onFocus={() => { selectEnterCount.current.customer = 0; }}
-              data-nav="customer"
-              className="flat-select"
-            >
-              <option value="">Select customer…</option>
-              {customers.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.phone_number})</option>)}
-            </select>
+            <div className="relative">
+              <input
+                type="text"
+                className="flat-input w-full pr-8"
+                placeholder={selectedCustomer ? `${selectedCustomer.name} (${selectedCustomer.phone_number})` : "Search & select customer..."}
+                value={customerSearch}
+                onChange={(e) => {
+                  setCustomerSearch(e.target.value);
+                  setShowCustomerDropdown(true);
+                }}
+                onFocus={() => setShowCustomerDropdown(true)}
+                data-nav="customer"
+              />
+              <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                <ChevronDown size={16} />
+              </div>
+            </div>
+            {showCustomerDropdown && (
+              <div className="absolute z-50 left-0 right-0 mt-1 max-h-60 overflow-y-auto bg-white border border-gray-100 rounded-xl shadow-dropdown py-1">
+                {filteredCustomers.length === 0 ? (
+                  <p className="text-xs text-gray-400 italic p-3 text-center">No customers found</p>
+                ) : (
+                  filteredCustomers.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => {
+                        setCustomerId(c.id);
+                        setVehicleId("");
+                        setCustomerSearch("");
+                        setShowCustomerDropdown(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex flex-col gap-0.5 ${c.id === customerId ? 'bg-gray-50 font-medium' : ''}`}
+                    >
+                      <span className="text-gray-900 font-medium">{c.name}</span>
+                      <span className="text-gray-500">{c.phone_number}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
           </div>
-          <div>
+          <div className="relative" ref={vehicleDropdownRef}>
             <div className="flex justify-between items-center mb-1.5">
               <label className="flat-label block">Vehicle</label>
               {customerId && (
@@ -1417,17 +1491,55 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
                 </button>
               )}
             </div>
-            <select
-              value={vehicleId}
-              onChange={(e) => setVehicleId(e.target.value)}
-              onFocus={() => { selectEnterCount.current.vehicle = 0; }}
-              data-nav="vehicle"
-              className="flat-select"
-              disabled={!customerId}
-            >
-              <option value="">Select vehicle…</option>
-              {visibleVehicles.map((v) => <option key={v.id} value={v.id}>{formatVehicleNumber(v.vehicle_number)} — {v.make} {v.model}</option>)}
-            </select>
+            <div className="relative">
+              <input
+                type="text"
+                className="flat-input w-full pr-8"
+                placeholder={
+                  selectedVehicle
+                    ? `${formatVehicleNumber(selectedVehicle.vehicle_number)} — ${selectedVehicle.make || ""} ${selectedVehicle.model || ""}`.trim()
+                    : customerId
+                    ? "Search & select vehicle..."
+                    : "Select a customer first..."
+                }
+                value={vehicleSearch}
+                onChange={(e) => {
+                  setVehicleSearch(e.target.value);
+                  setShowVehicleDropdown(true);
+                }}
+                onFocus={() => {
+                  if (customerId) setShowVehicleDropdown(true);
+                }}
+                disabled={!customerId}
+                data-nav="vehicle"
+              />
+              <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                <ChevronDown size={16} />
+              </div>
+            </div>
+            {showVehicleDropdown && customerId && (
+              <div className="absolute z-50 left-0 right-0 mt-1 max-h-60 overflow-y-auto bg-white border border-gray-100 rounded-xl shadow-dropdown py-1">
+                {filteredVehicles.length === 0 ? (
+                  <p className="text-xs text-gray-400 italic p-3 text-center">No vehicles found</p>
+                ) : (
+                  filteredVehicles.map((v) => (
+                    <button
+                      key={v.id}
+                      type="button"
+                      onClick={() => {
+                        setVehicleId(v.id);
+                        setVehicleSearch("");
+                        setShowVehicleDropdown(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex flex-col gap-0.5 ${v.id === vehicleId ? 'bg-gray-50 font-medium' : ''}`}
+                    >
+                      <span className="text-gray-900 font-medium">{formatVehicleNumber(v.vehicle_number) || "Temporary Number"}</span>
+                      <span className="text-gray-500">{v.make || ""} {v.model || ""}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
           </div>
         </div>
 
