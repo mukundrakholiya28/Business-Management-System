@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import { useProtectedRoute } from "@/context/AuthContext";
 import { StatusSelect, EmptyState, Modal, PageSkeleton, PhoneNumber } from "@/components/ui";
-import { formatCurrency, formatDate, getInitials, generateId, formatPhoneNumber, getLocalDateString } from "@/lib/helpers";
+import { formatCurrency, formatDate, getInitials, generateId, formatPhoneNumber, getLocalDateString, formatVehicleNumber } from "@/lib/helpers";
 import { loadWorkshopData, saveBillWithItems, deleteVehicle, deleteBill, updateCustomer, saveVehicle } from "@/lib/workshop-data";
 import { exportInvoicePDF, generateInvoicePDF } from "@/lib/pdf";
 import { supabase } from "@/lib/supabase";
