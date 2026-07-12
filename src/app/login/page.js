@@ -65,7 +65,7 @@ export default function LoginPage() {
 
         {/* Header */}
         <div className="flex flex-col items-center text-center mb-7">
-          <h1 className="font-vortice text-gray-900 text-xl tracking-wider mb-1">Shree Royal Car</h1>
+          <h1 className="font-oswald font-bold text-2xl uppercase tracking-wider text-gray-900 mb-1">Shree Royal Car</h1>
           <p className="text-xs text-gray-400 font-semibold tracking-wider uppercase">Workshop Manager</p>
         </div>
 

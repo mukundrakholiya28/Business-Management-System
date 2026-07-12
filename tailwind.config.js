@@ -37,6 +37,7 @@ module.exports = {
       },
       fontFamily: {
         sans: ["Inter", "system-ui", "-apple-system", "sans-serif"],
+        oswald: ["var(--font-oswald)", "sans-serif"],
         vortice: ["vortice-concept", "sans-serif"],
       },
       fontSize: {
