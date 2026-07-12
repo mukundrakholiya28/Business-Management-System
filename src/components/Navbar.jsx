@@ -42,7 +42,7 @@ export default function Navbar() {
 
         {/* Brand â€” left */}
         <Link href="/" className="shrink-0 hover:opacity-80 transition-opacity">
-          <span className="font-oswald font-bold text-[18px] uppercase tracking-wider text-gray-900 whitespace-nowrap">
+          <span className="font-oswald font-bold text-[25px] uppercase tracking-wider text-gray-900 whitespace-nowrap">
             Shree Royal Car
           </span>
         </Link>
