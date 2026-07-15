@@ -13,15 +13,6 @@ export async function generateInvoicePDF({ bill, items, customer, vehicle }) {
   let container = null;
 
   try {
-    // Fetch profile details client-side (authenticated session)
-    let profile = null;
-    try {
-      const { loadProfile } = await import("@/lib/workshop-data");
-      profile = await loadProfile();
-    } catch (e) {
-      console.warn("Could not load business profile client-side:", e);
-    }
-
     // Get current session token for API authorization
     const { data: { session } } = await supabase.auth.getSession();
     const token = session?.access_token;
@@ -33,7 +24,7 @@ export async function generateInvoicePDF({ bill, items, customer, vehicle }) {
         "Content-Type": "application/json",
         ...(token ? { "Authorization": `Bearer ${token}` } : {})
       },
-      body:    JSON.stringify({ bill, items, customer, vehicle, profile }),
+      body:    JSON.stringify({ bill, items, customer, vehicle }),
     });
 
     if (!res.ok) {

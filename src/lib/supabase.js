@@ -9,8 +9,28 @@ export const supabase =
     : null;
 
 /**
+ * Returns a Supabase client configured with the provided JWT token to respect RLS policies,
+ * or the default anon client if no token is given.
+ */
+export function getSupabaseClient(token) {
+  if (!supabaseUrl || !supabaseAnonKey) return null;
+  if (!token) return supabase;
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+    global: {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  });
+}
+
+/**
  * Verifies the Supabase JWT token passed in the Authorization header.
- * Returns { authenticated: true, user } if valid, or throws/returns error.
+ * Returns { authenticated: true, user, token } if valid, or throws/returns error.
  */
 export async function authenticateRequest(request) {
   const authHeader = request.headers.get("Authorization");
@@ -29,8 +49,9 @@ export async function authenticateRequest(request) {
     if (error || !user) {
       return { authenticated: false, error: error?.message || "Invalid authorization token" };
     }
-    return { authenticated: true, user };
+    return { authenticated: true, user, token };
   } catch (err) {
     return { authenticated: false, error: err.message };
   }
 }
+

@@ -40,6 +40,37 @@ BEGIN
     RAISE EXCEPTION 'Not authenticated';
   END IF;
 
+  -- Validate financial calculations on server-side if items are provided
+  IF p_items IS NOT NULL THEN
+    DECLARE
+      v_calculated_subtotal NUMERIC := 0;
+      v_taxable_amount NUMERIC := 0;
+      v_item RECORD;
+    BEGIN
+      FOR v_item IN SELECT * FROM jsonb_to_recordset(p_items) AS x(
+        quantity NUMERIC,
+        unit_price NUMERIC
+      ) LOOP
+        v_calculated_subtotal := v_calculated_subtotal + (COALESCE(v_item.quantity, 0) * COALESCE(v_item.unit_price, 0));
+      END LOOP;
+      v_calculated_subtotal := ROUND(v_calculated_subtotal, 2);
+
+      IF COALESCE(p_discount, 0) > v_calculated_subtotal THEN
+        RAISE EXCEPTION 'Discount cannot exceed subtotal';
+      END IF;
+
+      IF ABS(COALESCE(p_subtotal, 0) - v_calculated_subtotal) > 0.05 THEN
+        RAISE EXCEPTION 'Invalid financial calculations: subtotal does not match sum of items';
+      END IF;
+
+      v_taxable_amount := GREATEST(0, v_calculated_subtotal - COALESCE(p_discount, 0));
+
+      IF ABS(COALESCE(p_total_amount, 0) - (v_taxable_amount + COALESCE(p_tax_amount, 0))) > 0.05 THEN
+        RAISE EXCEPTION 'Invalid financial calculations: total does not match subtotal - discount + tax';
+      END IF;
+    END;
+  END IF;
+
   -- 1. If bill_id is provided, check if it exists (meaning we are updating)
   IF v_bill_id IS NOT NULL AND EXISTS (SELECT 1 FROM bills WHERE id = v_bill_id) THEN
     -- Verify ownership before update

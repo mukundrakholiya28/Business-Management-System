@@ -13,7 +13,7 @@ import { NextResponse } from "next/server";
 import ejs from "ejs";
 import path from "path";
 import fs from "fs";
-import { supabase, authenticateRequest } from "@/lib/supabase";
+import { supabase, authenticateRequest, getSupabaseClient } from "@/lib/supabase";
 import { sanitizeObject } from "@/lib/helpers";
 import { logger } from "@/lib/logger";
 
@@ -184,9 +184,9 @@ function buildTemplateData({ bill, items, customer, vehicle, profile = null }) {
       tagline:     profile?.tagline     || "Automotive Repair & Car Wash",
       established: profile?.established || "2004",
       address:     profile?.address     || "Ahmedabad, Gujarat",
-      phone:       profile?.phone       || process.env.NEXT_PUBLIC_COMPANY_PHONE   || "+91 98765 43210",
-      email:       profile?.email       || process.env.NEXT_PUBLIC_COMPANY_EMAIL   || "billing@shreeroyalcar.in",
-      gstin:       profile?.gstin       || process.env.NEXT_PUBLIC_COMPANY_GSTIN   || "",
+      phone:       profile?.phone       || process.env.COMPANY_PHONE   || "+91 98765 43210",
+      email:       profile?.email       || process.env.COMPANY_EMAIL   || "billing@shreeroyalcar.in",
+      gstin:       profile?.gstin       || process.env.COMPANY_GSTIN   || "",
       logo:        logoAsDataUrl(),
     },
     invoice: {
@@ -227,11 +227,11 @@ function buildTemplateData({ bill, items, customer, vehicle, profile = null }) {
       balanceDue: Number(bill.total_amount) - Number(bill.paid_amount || 0),
     },
     payment: {
-      method:        profile?.payment_methods || process.env.NEXT_PUBLIC_PAYMENT_METHODS || "UPI / Bank Transfer / Cash",
-      upiId:         profile?.upi_id          || process.env.NEXT_PUBLIC_UPI_ID          || "",
-      bankName:      profile?.bank_name        || process.env.NEXT_PUBLIC_BANK_NAME       || "",
-      accountNumber: profile?.account_number   || process.env.NEXT_PUBLIC_ACCOUNT_NUMBER  || "",
-      ifsc:          profile?.ifsc             || process.env.NEXT_PUBLIC_IFSC            || "",
+      method:        profile?.payment_methods || process.env.PAYMENT_METHODS || "UPI / Bank Transfer / Cash",
+      upiId:         profile?.upi_id          || process.env.UPI_ID          || "",
+      bankName:      profile?.bank_name        || process.env.BANK_NAME       || "",
+      accountNumber: profile?.account_number   || process.env.ACCOUNT_NUMBER  || "",
+      ifsc:          profile?.ifsc             || process.env.IFSC            || "",
       notes:         bill.notes || profile?.invoice_notes || "Thank you for your business.",
     },
   };
@@ -290,21 +290,22 @@ export async function POST(request) {
     }
 
     const payload = await request.json();
-    const { bill, items, customer, vehicle, profile: clientProfile } = sanitizeObject(payload);
+    const { bill, items, customer, vehicle } = sanitizeObject(payload);
 
-    let profile = clientProfile;
+    let profile = null;
 
-    if (!profile) {
-      // Fetch business profile from Supabase (falls back to env vars if unavailable)
-      try {
-        const { data } = await supabase
+    // Fetch business profile from Supabase server-side with RLS user context
+    try {
+      const client = getSupabaseClient(authResult.token);
+      if (client) {
+        const { data } = await client
           .from("business_profile")
           .select("*")
           .limit(1)
           .single();
         profile = data;
-      } catch (_) { /* use env var fallbacks */ }
-    }
+      }
+    } catch (_) { /* use env var fallbacks */ }
 
     const templateData = buildTemplateData({ bill, items, customer, vehicle, profile });
     const html = await renderInvoiceHtml(templateData);
