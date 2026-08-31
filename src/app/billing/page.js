@@ -23,6 +23,7 @@ import {
   saveCustomerWithVehicles,
   deleteBill,
   saveVehicle,
+  fetchBillItemsByBillId,
 } from "@/lib/workshop-data";
 import {
   Plus,
@@ -170,12 +171,23 @@ function BillingPage() {
     setShowBillForm(true);
   };
 
-  const openEditBillForm = (bill) => {
+  const openEditBillForm = async (bill) => {
+    try {
+      const freshItems = await fetchBillItemsByBillId(bill.id);
+      if (freshItems && freshItems.length > 0) {
+        setBillItems((prev) => {
+          const remaining = prev.filter((i) => i.bill_id !== bill.id);
+          return [...remaining, ...freshItems];
+        });
+      }
+    } catch (err) {
+      console.warn("Could not refresh bill items for edit:", err);
+    }
     setEditingBill(bill);
     setShowBillForm(true);
   };
 
-  const exportPDF = async (bill) => {
+  const exportPDF = async (bill, currentItems) => {
     let pdfUrl = bill.pdf_url || null;
 
     if (pdfUrl) {
@@ -186,7 +198,10 @@ function BillingPage() {
 
     const customer = customers.find((c) => c.id === bill.customer_id);
     const vehicle  = vehicles.find((v) => v.id === bill.vehicle_id);
-    const items    = billItems.filter((i) => i.bill_id === bill.id);
+    let items = currentItems || billItems.filter((i) => i.bill_id === bill.id);
+    if (!items || items.length === 0) {
+      items = await fetchBillItemsByBillId(bill.id);
+    }
 
     try {
       showToast("Generating & storing invoice PDF...");
@@ -238,10 +253,13 @@ function BillingPage() {
     }
   };
 
-  const sendToCustomer = async (bill) => {
+  const sendToCustomer = async (bill, currentItems) => {
     const customer = customers.find((c) => c.id === bill.customer_id);
     const vehicle  = vehicles.find((v) => v.id === bill.vehicle_id);
-    const items    = billItems.filter((i) => i.bill_id === bill.id);
+    let items = currentItems || billItems.filter((i) => i.bill_id === bill.id);
+    if (!items || items.length === 0) {
+      items = await fetchBillItemsByBillId(bill.id);
+    }
 
     if (!customer?.phone_number) {
       showToast("No phone number on file for this customer.");
@@ -771,12 +789,18 @@ function BillingPage() {
           customers={customers}
           vehicles={vehicles}
           onClose={() => setSelectedBill(null)}
-          onExportPDF={() => exportPDF(selectedBill)}
-          onSend={() => sendToCustomer(selectedBill)}
+          onExportPDF={(currentItems) => exportPDF(selectedBill, currentItems)}
+          onSend={(currentItems) => sendToCustomer(selectedBill, currentItems)}
           onEdit={() => openEditBillForm(selectedBill)}
           onMarkPaid={() => handleMarkPaid(selectedBill)}
           onStatusChange={(newStatus) => handleStatusChange(selectedBill, newStatus)}
           showToast={showToast}
+          onItemsUpdated={(billId, freshItems) => {
+            setBillItems((prev) => {
+              const remaining = prev.filter((i) => i.bill_id !== billId);
+              return [...remaining, ...freshItems];
+            });
+          }}
         />
       )}
       {showBillForm && (
@@ -820,12 +844,34 @@ function BillingPage() {
   );
 }
 
-function BillDetailModal({ bill, items, customers, vehicles, onClose, onExportPDF, onSend, onEdit, onMarkPaid, onStatusChange, showToast }) {
+function BillDetailModal({ bill, items, customers, vehicles, onClose, onExportPDF, onSend, onEdit, onMarkPaid, onStatusChange, showToast, onItemsUpdated }) {
   const customer = customers.find((c) => c.id === bill.customer_id);
   const vehicle = vehicles.find((v) => v.id === bill.vehicle_id);
   const isOnlinePending = bill.payment_method === "online" && bill.status === "pending";
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState(null);
+  const [modalItems, setModalItems] = useState(items || []);
+
+  useEffect(() => {
+    setModalItems(items || []);
+  }, [items]);
+
+  useEffect(() => {
+    if (!bill?.id) return;
+    let mounted = true;
+    fetchBillItemsByBillId(bill.id).then((fresh) => {
+      if (!mounted) return;
+      if (fresh && fresh.length > 0) {
+        setModalItems(fresh);
+        if (onItemsUpdated) {
+          onItemsUpdated(bill.id, fresh);
+        }
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [bill?.id]);
 
   const handleResendWhatsApp = async () => {
     setSending(true);
@@ -882,7 +928,7 @@ function BillDetailModal({ bill, items, customers, vehicles, onClose, onExportPD
             </tr>
           </thead>
           <tbody>
-            {items.map((item, i) => (
+            {modalItems.map((item, i) => (
               <tr key={item.id ?? i} className="border-b border-gray-50">
                 <td className="py-2.5 text-gray-400 text-xs">{i + 1}</td>
                 <td className="py-2.5 text-gray-700">{item.description}</td>
@@ -898,7 +944,7 @@ function BillDetailModal({ bill, items, customers, vehicles, onClose, onExportPD
       {/* Line Items List — Mobile */}
       <div className="sm:hidden space-y-2 mb-5">
         <p className="flat-label mb-2">Items</p>
-        {items.map((item, i) => (
+        {modalItems.map((item, i) => (
           <div key={item.id ?? i} className="bg-gray-50 rounded-xl p-3 flex flex-col gap-1 text-xs">
             <div className="flex items-start justify-between gap-2">
               <span className="font-semibold text-gray-900 flex gap-2">
@@ -993,10 +1039,10 @@ function BillDetailModal({ bill, items, customers, vehicles, onClose, onExportPD
       )}
 
       <div className="flex flex-wrap gap-2 mt-4">
-        <button onClick={onExportPDF} className="flat-btn"><Download size={14} strokeWidth={1.5} /> PDF</button>
-        <button onClick={onEdit} className="flat-btn"><Pencil size={14} strokeWidth={1.5} /> Edit</button>
+        <button onClick={() => onExportPDF && onExportPDF(modalItems)} className="flat-btn"><Download size={14} strokeWidth={1.5} /> PDF</button>
+        <button onClick={() => onEdit && onEdit(modalItems)} className="flat-btn"><Pencil size={14} strokeWidth={1.5} /> Edit</button>
         {!isOnlinePending && (
-          <button onClick={onSend} className="flat-btn-primary"><Send size={14} strokeWidth={1.5} /> Send</button>
+          <button onClick={() => onSend && onSend(modalItems)} className="flat-btn-primary"><Send size={14} strokeWidth={1.5} /> Send</button>
         )}
       </div>
     </Modal>
@@ -1012,6 +1058,24 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
       ? billItems.map((item) => ({ description: item.description, quantity: item.quantity, unit_price: item.unit_price }))
       : [{ description: "", quantity: 1, unit_price: 0 }]
   );
+
+  useEffect(() => {
+    if (!bill?.id) return;
+    let mounted = true;
+    fetchBillItemsByBillId(bill.id).then((freshItems) => {
+      if (!mounted) return;
+      if (freshItems && freshItems.length > items.length) {
+        setItems(freshItems.map((item) => ({
+          description: item.description,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+        })));
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [bill?.id]);
   const [discount, setDiscount] = useState(bill?.discount || 0);
   const [paymentHistory, setPaymentHistory] = useState(
     bill?.payment_history && Array.isArray(bill.payment_history)

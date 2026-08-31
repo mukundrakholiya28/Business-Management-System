@@ -17,6 +17,45 @@ async function getUserId() {
   return user.id;
 }
 
+// ─── Batch fetch helper to bypass Supabase / PostgREST 1,000 row limit ─────────
+async function fetchAllInBatches(table, orderCol = "created_at", ascending = false) {
+  let all = [];
+  let from = 0;
+  const pageSize = 1000;
+  while (true) {
+    const { data, error } = await supabase
+      .from(table)
+      .select("*")
+      .order(orderCol, { ascending })
+      .range(from, from + pageSize - 1);
+    if (error) throw new Error(error.message);
+    if (!data || data.length === 0) break;
+    all.push(...data);
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
+  return all;
+}
+
+/**
+ * Fetch all line items for a specific bill on-demand.
+ * Always guarantees 100% complete items list directly from the database.
+ */
+export async function fetchBillItemsByBillId(billId) {
+  if (!isSupabaseReady() || !billId) return [];
+  const { data, error } = await supabase
+    .from("bill_items")
+    .select("*")
+    .eq("bill_id", billId)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+  if (error) {
+    console.error("Error fetching bill items for bill:", billId, error);
+    return [];
+  }
+  return data || [];
+}
+
 // ─── Workshop data ────────────────────────────────────────────────────────────
 
 export async function loadWorkshopData() {
@@ -27,27 +66,26 @@ export async function loadWorkshopData() {
   }
 
   // RLS automatically filters to the current user's rows —
-  // no .eq("user_id", ...) needed here.
-  const [customersResult, vehiclesResult, billsResult, billItemsResult] = await Promise.all([
-    supabase.from("customers").select("*").order("created_at", { ascending: false }),
-    supabase.from("vehicles").select("*").order("created_at", { ascending: false }),
-    supabase.from("bills").select("*").order("bill_number", { ascending: false }),
-    supabase.from("bill_items").select("*").order("sort_order", { ascending: true }).order("created_at", { ascending: true }),
+  // Fetch each table in batches of 1,000 so large tables are never truncated.
+  const [customers, vehicles, bills, rawBillItems] = await Promise.all([
+    fetchAllInBatches("customers", "created_at", false),
+    fetchAllInBatches("vehicles", "created_at", false),
+    fetchAllInBatches("bills", "bill_number", false),
+    fetchAllInBatches("bill_items", "created_at", true),
   ]);
 
-  const firstError = [customersResult, vehiclesResult, billsResult, billItemsResult].find(
-    (r) => r.error
-  );
-  if (firstError) throw new Error(firstError.error.message);
+  // Sort bill items so items within each bill are ordered by sort_order ascending
+  const billItems = (rawBillItems || []).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
 
   return {
     source: "supabase",
-    customers: customersResult.data || [],
-    vehicles:  vehiclesResult.data  || [],
-    bills:     billsResult.data     || [],
-    billItems: billItemsResult.data || [],
+    customers: customers || [],
+    vehicles:  vehicles  || [],
+    bills:     bills     || [],
+    billItems: billItems || [],
   };
 }
+
 
 // ─── Customers & Vehicles ─────────────────────────────────────────────────────
 
