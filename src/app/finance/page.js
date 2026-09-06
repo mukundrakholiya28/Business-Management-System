@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import { useProtectedRoute } from "@/context/AuthContext";
 import { PageSkeleton } from "@/components/ui";
@@ -161,6 +162,7 @@ const STATUS_COLOR = {
 
 export default function FinancePage() {
   const { user, loading } = useProtectedRoute();
+  const router = useRouter();
   const [bills, setBills]             = useState([]);
   const [customers, setCustomers]     = useState([]);
   const [loadingData, setLoadingData] = useState(true);
@@ -472,7 +474,7 @@ export default function FinancePage() {
                           return (
                             <tr
                               key={bill.id}
-                              onClick={() => window.location.href = `/billing?bill=${bill.id}`}
+                              onClick={() => router.push(`/billing?bill=${bill.id}`)}
                               className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors cursor-pointer"
                             >
                               <td className="py-2.5 px-5 font-medium text-gray-900 whitespace-nowrap">INV-{bill.bill_number}</td>

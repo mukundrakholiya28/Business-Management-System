@@ -1,6 +1,6 @@
 import { Inter, Oswald } from "next/font/google";
 import "./globals.css";
-import { AuthProvider, ProtectedLayout } from "@/context/AuthContext";
+import { AuthProvider } from "@/context/AuthContext";
 
 const inter = Inter({
   variable: "--font-inter",

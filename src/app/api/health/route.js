@@ -7,8 +7,8 @@ export async function GET() {
   try {
     if (!supabase) {
       return NextResponse.json(
-        { status: "unhealthy", database: "Supabase client not initialized" },
-        { status: 503 }
+        { status: "unhealthy" },
+        { status: 503, headers: { "Cache-Control": "no-store" } }
       );
     }
 
@@ -19,21 +19,21 @@ export async function GET() {
 
     if (error) {
       return NextResponse.json(
-        { status: "unhealthy", database: "connection failed", error: error.message },
-        { status: 503 }
+        { status: "unhealthy" },
+        { status: 503, headers: { "Cache-Control": "no-store" } }
       );
     }
 
     return NextResponse.json({
       status: "healthy",
       timestamp: new Date().toISOString(),
-      database: "connected",
       latency: `${latency}ms`
-    }, { status: 200 });
+    }, { status: 200, headers: { "Cache-Control": "no-store" } });
   } catch (err) {
+    console.error("Health check failed", err);
     return NextResponse.json(
-      { status: "unhealthy", error: err.message },
-      { status: 500 }
+      { status: "unhealthy" },
+      { status: 500, headers: { "Cache-Control": "no-store" } }
     );
   }
 }

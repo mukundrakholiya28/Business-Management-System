@@ -7,6 +7,7 @@ import { ArrowUpRight, Car, TrendingUp } from "lucide-react";
 import { StatCard, StatusSelect, SectionHeader, PageSkeleton } from "@/components/ui";
 import { formatCurrency, formatVehicleNumber, formatDate } from "@/lib/helpers";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { loadWorkshopData, saveBillWithItems } from "@/lib/workshop-data";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -52,6 +53,7 @@ function invoiceStats(bills) {
 
 export default function DashboardPage() {
   const { user, loading } = useProtectedRoute();
+  const router = useRouter();
   const [customers, setCustomers] = useState([]);
   const [vehicles, setVehicles]   = useState([]);
   const [bills, setBills]         = useState([]);
@@ -186,7 +188,7 @@ export default function DashboardPage() {
                       return (
                         <tr
                           key={bill.id}
-                          onClick={() => window.location.href = `/billing?bill=${bill.id}`}
+                          onClick={() => router.push(`/billing?bill=${bill.id}`)}
                           className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors cursor-pointer"
                         >
                           <td className="py-3 px-5 font-medium text-gray-900 whitespace-nowrap">

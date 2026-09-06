@@ -1,11 +1,14 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useSyncExternalStore } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Search, X, ArrowRight } from "lucide-react";
 import { loadWorkshopData } from "@/lib/workshop-data";
 import { normalizeSearch, formatVehicleNumber, getInitials } from "@/lib/helpers";
 import { createPortal } from "react-dom";
+
+const emptySubscribe = () => () => {};
 
 function ResultItem({ r, onClick }) {
   return (
@@ -33,9 +36,11 @@ function ResultItem({ r, onClick }) {
         </>
       ) : (
         <>
-          <img
+          <Image
             src="/logo.png"
             alt="Car Logo"
+            width={32}
+            height={32}
             className="w-8 h-8 rounded-lg object-contain bg-gray-50 border border-gray-100 shrink-0"
           />
           <div className="flex-1 min-w-0">
@@ -56,15 +61,11 @@ export default function GlobalSearch() {
   const [dataLoaded, setDataLoaded] = useState(false);
   const [focused, setFocused]     = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
-  const [mounted, setMounted]     = useState(false);
+  const mounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
   
   const router    = useRouter();
   const inputRef  = useRef(null);
   const wrapperRef = useRef(null);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   // Load data once on first focus
   const ensureData = () => {

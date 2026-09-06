@@ -8,10 +8,14 @@ const AuthContext = createContext();
 
 export function AuthProvider({ children }) {
   const [user, setUser]       = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState(null);
+  const [loading, setLoading] = useState(Boolean(supabase));
+  const [error, setError]     = useState(supabase ? null : "Supabase is not configured. Please contact the administrator.");
 
   useEffect(() => {
+    if (!supabase) {
+      return undefined;
+    }
+
     // Restore session from Supabase (reads JWT from localStorage automatically)
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
@@ -30,6 +34,14 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     setError(null);
     setLoading(true);
+
+    if (!supabase) {
+      const message = "Supabase is not configured. Please contact the administrator.";
+      setError(message);
+      setLoading(false);
+      return { success: false, error: message };
+    }
+
     try {
       const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
       if (authError) {
@@ -48,6 +60,7 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async () => {
+    if (!supabase) return;
     await supabase.auth.signOut();
     setUser(null);
   };

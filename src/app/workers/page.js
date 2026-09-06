@@ -38,6 +38,11 @@ export default function WorkersPage() {
   const [showPaySalary, setShowPaySalary] = useState(null);
   const [toast, setToast] = useState(null);
 
+  const showToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3000);
+  };
+
   useEffect(() => {
     let mounted = true;
     Promise.all([loadWorkers(), loadSalaryRecords()])
@@ -61,11 +66,6 @@ export default function WorkersPage() {
       </div>
     );
   }
-
-  const showToast = (msg) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 3000);
-  };
 
   const activeWorkers = workers.filter((w) => w.is_active);
   const totalPayroll = activeWorkers.reduce((s, w) => s + w.base_salary, 0);

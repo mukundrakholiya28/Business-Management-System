@@ -9,6 +9,7 @@ import { formatCurrency, formatDate, getInitials, generateId, formatPhoneNumber,
 import { loadWorkshopData, saveBillWithItems, deleteVehicle, deleteBill, updateCustomer, saveVehicle, fetchBillItemsByBillId } from "@/lib/workshop-data";
 import { exportInvoicePDF, generateInvoicePDF } from "@/lib/pdf";
 import { supabase } from "@/lib/supabase";
+import { uploadInvoicePdf, createInvoiceDownloadUrl, createInvoiceEmailUrl, downloadInvoicePdf } from "@/lib/invoice-storage";
 import {
   ArrowLeft, Car, Phone, Mail, MapPin, Receipt,
   Download, Pencil, Send, ChevronDown, ChevronRight,
@@ -88,13 +89,26 @@ export default function CustomerDetailPage() {
     return s;
   }, 0);
 
-  const exportPDF = async (bill, currentItems) => {
-    let pdfUrl = bill.pdf_url || null;
+  const persistInvoicePdf = async (bill, pdfBlob) => {
+    const storagePath = await uploadInvoicePdf(bill, pdfBlob);
+    const saved = await saveBillWithItems({
+      bill: { ...bill, pdf_url: storagePath },
+      items: undefined,
+      isEditing: true,
+    });
+    return saved.bill;
+  };
 
-    if (pdfUrl) {
-      window.open(`${pdfUrl}?t=${Date.now()}`, '_blank');
-      showToast("Opening PDF...");
-      return;
+  const exportPDF = async (bill, currentItems) => {
+    if (bill.pdf_url) {
+      try {
+        const signedUrl = await createInvoiceDownloadUrl(bill.pdf_url);
+        window.open(signedUrl, "_blank", "noopener,noreferrer");
+        showToast("Opening PDF...");
+        return;
+      } catch (error) {
+        console.warn("Stored PDF could not be opened; regenerating it.", error);
+      }
     }
 
     const cust    = allCustomers.find((c) => c.id === bill.customer_id);
@@ -110,40 +124,10 @@ export default function CustomerDetailPage() {
       if (pdf) {
         const pdfBlob = pdf.output("blob");
 
-        if (supabase) {
-          try {
-            const { data: { user } } = await supabase.auth.getUser();
-            const userId = user?.id || "anonymous";
-            const filePath = `${userId}/INV-${bill.bill_number}.pdf`;
-
-            await supabase.storage.createBucket('invoices', { public: true }).catch(() => {});
-            const { error: uploadError } = await supabase.storage
-              .from('invoices')
-              .upload(filePath, pdfBlob, {
-                contentType: 'application/pdf',
-                upsert: true,
-                cacheControl: '0',
-              });
-
-            if (uploadError) {
-              console.error("Storage upload failed on download fallback:", uploadError);
-            } else {
-              const { data: urlData } = supabase.storage
-                .from('invoices')
-                .getPublicUrl(filePath);
-              pdfUrl = urlData?.publicUrl;
-
-              // Save the pdf_url to the DB so it's cached for future use
-              const billWithPdf = { ...bill, pdf_url: pdfUrl };
-              const saved = await saveBillWithItems({ bill: billWithPdf, items: undefined, isEditing: true });
-              
-              // Update local state
-              setBills((prev) => prev.map((b) => (b.id === bill.id ? saved.bill : b)));
-            }
-          } catch (storageErr) {
-            console.error("Storage upload error on download fallback:", storageErr);
-          }
-        }
+        const savedBill = await persistInvoicePdf(bill, pdfBlob);
+        setBills((prev) => prev.map((entry) => (entry.id === bill.id ? savedBill : entry)));
+        setAllBills((prev) => prev.map((entry) => (entry.id === bill.id ? savedBill : entry)));
+        setSelectedBill((current) => current?.id === bill.id ? savedBill : current);
 
         // Trigger local download/open
         await exportInvoicePDF({ bill, items, customer: cust, vehicle }, showToast);
@@ -183,34 +167,13 @@ export default function CustomerDetailPage() {
         (async () => {
           try {
             const pdf = await generateInvoicePDF({ bill: nextBill, items: nextItems, customer, vehicle });
-            if (pdf && supabase) {
+            if (pdf) {
               const pdfBlob = pdf.output("blob");
-              const { data: { user } } = await supabase.auth.getUser();
-              const userId = user?.id || "anonymous";
-              const filePath = `${userId}/INV-${nextBill.bill_number}.pdf`;
-
-              await supabase.storage.createBucket('invoices', { public: true }).catch(() => {});
-              const { error: uploadError } = await supabase.storage
-                .from('invoices')
-                .upload(filePath, pdfBlob, {
-                  contentType: 'application/pdf',
-                  upsert: true,
-                  cacheControl: '0',
-                });
-
-              if (!uploadError) {
-                const { data: urlData } = supabase.storage.from('invoices').getPublicUrl(filePath);
-                const pdfUrl = urlData?.publicUrl;
-                if (pdfUrl) {
-                  const billWithPdf = { ...nextBill, pdf_url: pdfUrl };
-                  const updatedSaved = await saveBillWithItems({ bill: billWithPdf, items: undefined, isEditing: true });
-                  const finalBill = updatedSaved.bill;
-                  setBills((prev) => prev.map((b) => (b.id === finalBill.id ? finalBill : b)));
-                  setAllBills((prev) => prev.map((b) => (b.id === finalBill.id ? finalBill : b)));
-                  setSelectedBill((prev) => prev?.id === finalBill.id ? finalBill : prev);
-                  console.log("Background PDF generation & upload complete:", pdfUrl);
-                }
-              }
+              const finalBill = await persistInvoicePdf(nextBill, pdfBlob);
+              setBills((prev) => prev.map((entry) => (entry.id === finalBill.id ? finalBill : entry)));
+              setAllBills((prev) => prev.map((entry) => (entry.id === finalBill.id ? finalBill : entry)));
+              setSelectedBill((prev) => prev?.id === finalBill.id ? finalBill : prev);
+              console.info("Background invoice PDF storage complete");
             }
           } catch (pdfErr) {
             console.error("Background PDF generation failed:", pdfErr.message);
@@ -237,34 +200,13 @@ export default function CustomerDetailPage() {
         (async () => {
           try {
             const pdf = await generateInvoicePDF({ bill: nextBill, items: nextItems, customer, vehicle });
-            if (pdf && supabase) {
+            if (pdf) {
               const pdfBlob = pdf.output("blob");
-              const { data: { user } } = await supabase.auth.getUser();
-              const userId = user?.id || "anonymous";
-              const filePath = `${userId}/INV-${nextBill.bill_number}.pdf`;
-
-              await supabase.storage.createBucket('invoices', { public: true }).catch(() => {});
-              const { error: uploadError } = await supabase.storage
-                .from('invoices')
-                .upload(filePath, pdfBlob, {
-                  contentType: 'application/pdf',
-                  upsert: true,
-                  cacheControl: '0',
-                });
-
-              if (!uploadError) {
-                const { data: urlData } = supabase.storage.from('invoices').getPublicUrl(filePath);
-                const pdfUrl = urlData?.publicUrl;
-                if (pdfUrl) {
-                  const billWithPdf = { ...nextBill, pdf_url: pdfUrl };
-                  const updatedSaved = await saveBillWithItems({ bill: billWithPdf, items: undefined, isEditing: true });
-                  const finalBill = updatedSaved.bill;
-                  setBills((prev) => prev.map((b) => (b.id === finalBill.id ? finalBill : b)));
-                  setAllBills((prev) => prev.map((b) => (b.id === finalBill.id ? finalBill : b)));
-                  setSelectedBill((prev) => prev?.id === finalBill.id ? finalBill : prev);
-                  console.log("Background PDF generation & upload complete:", pdfUrl);
-                }
-              }
+              const finalBill = await persistInvoicePdf(nextBill, pdfBlob);
+              setBills((prev) => prev.map((entry) => (entry.id === finalBill.id ? finalBill : entry)));
+              setAllBills((prev) => prev.map((entry) => (entry.id === finalBill.id ? finalBill : entry)));
+              setSelectedBill((prev) => prev?.id === finalBill.id ? finalBill : prev);
+              console.info("Background invoice PDF storage complete");
             }
           } catch (pdfErr) {
             console.error("Background PDF generation failed:", pdfErr.message);
@@ -364,31 +306,25 @@ export default function CustomerDetailPage() {
   };
 
   const sendToCustomer = async (bill, currentItems) => {
-    if (!customer?.phone_number) {
-      showToast("No phone number on file for this customer.");
+    if (!customer?.phone_number && !customer?.email) {
+      showToast("No phone number or email address is on file for this customer.");
       return;
     }
 
-    const vehicle = vehicles.find((v) => v.id === bill.vehicle_id);
-    let items = currentItems || billItems.filter((i) => i.bill_id === bill.id);
-    if (!items || items.length === 0) {
-      items = await fetchBillItemsByBillId(bill.id);
-    }
-
-    const pdfUrl = bill.pdf_url || null;
+    const pdfReference = bill.pdf_url || null;
+    let pdfUrl = null;
     let pdfBase64 = null;
     let pdfBlob = null;
 
-    if (!pdfUrl) {
+    if (!pdfReference) {
       showToast("No stored PDF found. Please save the invoice to generate it.");
       return;
     }
 
     try {
       showToast("Fetching stored PDF...");
-      const response = await fetch(`${pdfUrl}?t=${Date.now()}`);
-      if (!response.ok) throw new Error("Failed to fetch PDF from server.");
-      pdfBlob = await response.blob();
+      pdfBlob = await downloadInvoicePdf(pdfReference);
+      pdfUrl = await createInvoiceEmailUrl(pdfReference);
       pdfBase64 = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onloadend = () => resolve(reader.result.split(',')[1]);
@@ -408,14 +344,7 @@ export default function CustomerDetailPage() {
       try {
         showToast("Sending invoice email...");
         const { sendInvoiceEmail } = await import("@/lib/email");
-        const resData = await sendInvoiceEmail({
-          bill,
-          items,
-          customer,
-          vehicle,
-          pdfBase64,
-          pdfUrl,
-        });
+        const resData = await sendInvoiceEmail({ bill, pdfBase64, pdfUrl });
         emailSent = resData;
       } catch (err) {
         emailError = err.message;
@@ -437,11 +366,7 @@ export default function CustomerDetailPage() {
             });
             sharedNatively = true;
             if (emailSent) {
-              if (emailSent.redirected) {
-                showToast(`Email redirected to sandbox (${emailSent.authorizedEmail}) & native share opened`);
-              } else {
-                showToast(`Email sent & native share opened for ${customer.name}`);
-              }
+              showToast(`Email sent & native share opened for ${customer.name}`);
             } else if (emailError) {
               showToast(`Native share opened, but email failed: ${emailError}`);
             } else {
@@ -454,22 +379,22 @@ export default function CustomerDetailPage() {
       }
 
       if (!sharedNatively) {
+        if (!customer?.phone_number) {
+          showToast(emailSent ? `Email sent to ${customer.name}` : `Email failed: ${emailError || "no address on file"}`);
+          return;
+        }
+
         const { sendWhatsApp } = await import("@/lib/whatsapp");
-        const { formatCurrency } = await import("@/lib/helpers");
         sendWhatsApp(
           customer.phone_number,
           customer.name,
           `INV-${bill.bill_number}`,
           formatCurrency(bill.total_amount),
-          pdfUrl // Pass the public storage URL so the customer can open the PDF link
+          pdfUrl
         );
 
         if (emailSent) {
-          if (emailSent.redirected) {
-            showToast(`Email redirected to sandbox (${emailSent.authorizedEmail}) & WhatsApp opened`);
-          } else {
-            showToast(`Email sent & WhatsApp opened for ${customer.name}`);
-          }
+          showToast(`Email sent & WhatsApp opened for ${customer.name}`);
         } else if (emailError) {
           showToast(`WhatsApp opened, but email failed: ${emailError}`);
         } else {
@@ -906,10 +831,12 @@ function BillDetailModal({ bill, items, customer, vehicle, onClose, onExportPDF,
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState(null);
   const [modalItems, setModalItems] = useState(items || []);
+  const [prevPropItems, setPrevPropItems] = useState(items);
 
-  useEffect(() => {
+  if (items !== prevPropItems) {
+    setPrevPropItems(items);
     setModalItems(items || []);
-  }, [items]);
+  }
 
   useEffect(() => {
     if (!bill?.id) return;
@@ -926,12 +853,20 @@ function BillDetailModal({ bill, items, customer, vehicle, onClose, onExportPDF,
     return () => {
       mounted = false;
     };
-  }, [bill?.id]);
+  }, [bill?.id, onItemsUpdated]);
 
   const handleResendWhatsApp = async () => {
     setSending(true);
     setSendError(null);
     try {
+      let shareUrl = bill.pdf_url || null;
+      if (shareUrl) {
+        try {
+          shareUrl = await createInvoiceEmailUrl(bill.pdf_url);
+        } catch (urlErr) {
+          console.warn("Could not generate signed invoice URL for WhatsApp:", urlErr);
+        }
+      }
       const { sendWhatsApp } = await import("@/lib/whatsapp");
       const { formatCurrency } = await import("@/lib/helpers");
       sendWhatsApp(
@@ -939,7 +874,7 @@ function BillDetailModal({ bill, items, customer, vehicle, onClose, onExportPDF,
         customer?.name,
         `INV-${bill.bill_number}`,
         formatCurrency(bill.total_amount),
-        bill.pdf_url
+        shareUrl
       );
       setSending(false);
     } catch (err) {
@@ -1111,12 +1046,17 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
     let mounted = true;
     fetchBillItemsByBillId(bill.id).then((freshItems) => {
       if (!mounted) return;
-      if (freshItems && freshItems.length > items.length) {
-        setItems(freshItems.map((i) => ({
-          description: i.description,
-          quantity: i.quantity,
-          unit_price: i.unit_price,
-        })));
+      if (freshItems && freshItems.length > 0) {
+        setItems((currentItems) => {
+          if (freshItems.length > currentItems.length) {
+            return freshItems.map((i) => ({
+              description: i.description,
+              quantity: i.quantity,
+              unit_price: i.unit_price,
+            }));
+          }
+          return currentItems;
+        });
       }
     });
     return () => {
@@ -1264,17 +1204,20 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
   const taxAmount   = gstEnabled ? Math.round(subtotal * (gstRate / 100) * 100) / 100 : 0;
   const totalAmount = subtotal + taxAmount - discount;
 
-  useEffect(() => {
+  const [prevFinancials, setPrevFinancials] = useState({ paidAmount, totalAmount });
+  if (prevFinancials.paidAmount !== paidAmount || prevFinancials.totalAmount !== totalAmount) {
+    setPrevFinancials({ paidAmount, totalAmount });
     if (status !== "draft" && status !== "cancelled") {
-      if (paidAmount >= totalAmount && totalAmount > 0) {
-        setStatus("paid");
-      } else if (paidAmount > 0) {
-        setStatus("partially_paid");
-      } else {
-        setStatus("pending");
+      const nextStatus = (paidAmount >= totalAmount && totalAmount > 0)
+        ? "paid"
+        : (paidAmount > 0)
+        ? "partially_paid"
+        : "pending";
+      if (status !== nextStatus) {
+        setStatus(nextStatus);
       }
     }
-  }, [paidAmount, totalAmount]);
+  }
 
   const derivedStatus = () => "pending";
 

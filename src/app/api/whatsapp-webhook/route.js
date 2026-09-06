@@ -16,6 +16,15 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { logger } from "@/lib/logger";
 
+const MAX_WEBHOOK_BYTES = 256 * 1024;
+
+function safeEqual(left, right) {
+  const leftBuffer = Buffer.from(left || "");
+  const rightBuffer = Buffer.from(right || "");
+
+  return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
 // ─── GET — verification handshake ────────────────────────────────────────────
 
 export async function GET(request) {
@@ -32,7 +41,7 @@ export async function GET(request) {
     return new Response("Webhook verify token not configured", { status: 500 });
   }
 
-  if (mode === "subscribe" && token === verifyToken) {
+  if (mode === "subscribe" && challenge && safeEqual(token, verifyToken)) {
     logger.info("Webhook verified successfully with Meta handshake");
     // Meta requires a plain-text response with the challenge value
     return new Response(challenge, { status: 200 });
@@ -45,28 +54,43 @@ export async function GET(request) {
 // ─── POST — incoming events ───────────────────────────────────────────────────
 
 export async function POST(request) {
+  const appSecret = process.env.WHATSAPP_APP_SECRET;
+  if (!appSecret) {
+    logger.error("WHATSAPP_APP_SECRET is not set in environment");
+    return new Response("Webhook signature verification is not configured", { status: 503 });
+  }
+
+  const contentLength = Number(request.headers.get("content-length") || 0);
+  if (contentLength > MAX_WEBHOOK_BYTES) {
+    return new Response("Payload too large", { status: 413 });
+  }
+
   try {
     const signature = request.headers.get("x-hub-signature-256");
     const rawBody = await request.text();
-    
-    // Validate signature if app secret is configured
-    const appSecret = process.env.WHATSAPP_APP_SECRET;
-    if (appSecret) {
-      if (!signature) {
-        console.warn("[whatsapp-webhook] Signature verification failed: Missing signature");
-        return new Response("Unauthorized: Missing signature", { status: 401 });
-      }
-      const elements = signature.split("=");
-      const signatureHash = elements[1];
-      const expectedHash = crypto
-        .createHmac("sha256", appSecret)
-        .update(rawBody)
-        .digest("hex");
-      
-      if (signatureHash !== expectedHash) {
-        console.warn("[whatsapp-webhook] Signature verification failed: Hash mismatch");
-        return new Response("Unauthorized: Invalid signature", { status: 401 });
-      }
+
+    if (Buffer.byteLength(rawBody, "utf8") > MAX_WEBHOOK_BYTES) {
+      return new Response("Payload too large", { status: 413 });
+    }
+
+    const [algorithm, signatureHash] = signature?.split("=") || [];
+    if (
+      algorithm !== "sha256" ||
+      !signatureHash ||
+      !/^[a-f0-9]{64}$/i.test(signatureHash)
+    ) {
+      logger.warn("WhatsApp webhook signature is missing or malformed");
+      return new Response("Unauthorized", { status: 401 });
+    }
+
+    const expectedHash = crypto
+      .createHmac("sha256", appSecret)
+      .update(rawBody)
+      .digest("hex");
+
+    if (!safeEqual(signatureHash, expectedHash)) {
+      logger.warn("WhatsApp webhook signature verification failed");
+      return new Response("Unauthorized", { status: 401 });
     }
 
     const body = JSON.parse(rawBody);
@@ -96,8 +120,7 @@ export async function POST(request) {
     return NextResponse.json({ status: "ok" }, { status: 200 });
   } catch (err) {
     logger.error("Error processing WhatsApp webhook payload", err);
-    // Still return 200 to prevent Meta from disabling the webhook
-    return NextResponse.json({ status: "error", message: err.message }, { status: 200 });
+    return NextResponse.json({ error: "Invalid webhook payload" }, { status: 400 });
   }
 }
 
@@ -111,37 +134,15 @@ export async function POST(request) {
  * @param {Array}  contacts - Sender profile info
  */
 async function handleIncomingMessage(message, metadata, contacts) {
-  const sender      = message.from;                        // E.164 number, no "+"
   const messageId   = message.id;
   const timestamp   = new Date(Number(message.timestamp) * 1000).toISOString();
-  const senderName  = contacts?.[0]?.profile?.name ?? sender;
 
-  let text = null;
-
-  switch (message.type) {
-    case "text":
-      text = message.text?.body;
-      break;
-    case "image":
-    case "video":
-    case "audio":
-    case "document":
-      text = `[${message.type} received]`;
-      break;
-    case "button":
-      text = message.button?.text;
-      break;
-    case "interactive":
-      text =
-        message.interactive?.button_reply?.title ??
-        message.interactive?.list_reply?.title ??
-        "[interactive]";
-      break;
-    default:
-      text = `[${message.type}]`;
-  }
-
-  logger.info("Incoming WhatsApp message logged", { senderName, sender, timestamp, text });
+  // Do not log customer phone numbers, profile names, or message contents.
+  logger.info("Incoming WhatsApp message received", {
+    messageId,
+    type: message.type || "unknown",
+    timestamp,
+  });
 
   // TODO: persist to Supabase, trigger a reply, update order status, etc.
   // Example:
@@ -160,16 +161,16 @@ async function handleIncomingMessage(message, metadata, contacts) {
  * @param {object} status - The status object from Meta
  */
 async function handleStatusUpdate(status) {
-  const { id: messageId, status: state, timestamp, recipient_id, errors } = status;
+  const { id: messageId, status: state, timestamp, errors } = status;
 
   const ts = new Date(Number(timestamp) * 1000).toISOString();
 
   if (state === "failed") {
     const errCode = errors?.[0]?.code;
     const errMsg  = errors?.[0]?.message;
-    logger.error("WhatsApp message status update FAILED", new Error(errMsg || "Unknown Error"), { messageId, recipient_id, errCode, timestamp: ts });
+    logger.error("WhatsApp message status update failed", new Error(errMsg || "Unknown Error"), { messageId, errCode, timestamp: ts });
   } else {
-    logger.info("WhatsApp message status update received", { messageId, recipient_id, state, timestamp: ts });
+    logger.info("WhatsApp message status update received", { messageId, state, timestamp: ts });
   }
 
   // TODO: update message status in your database
