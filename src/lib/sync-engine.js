@@ -381,14 +381,12 @@ function toServerPayload(payload, table) {
     last_synced_at,
     local_revision,
     server_revision,
-    deleted_at,
-    gst_enabled,   // bills only — not a DB column
-    gst_rate,      // bills only — not a DB column
+    is_deleted,     // local-only — Supabase has no is_deleted column
+    gst_enabled,    // bills only — not a DB column
+    gst_rate,       // bills only — not a DB column
     ...serverPayload
   } = payload;
 
-  // bill_items doesn't have a user_id column in RLS but does in our local schema
-  // The server RPC handles items, so we never directly upload bill_items rows
   return serverPayload;
 }
 
@@ -489,8 +487,8 @@ async function mergeServerRow(db, tableName, serverRow, userId) {
   await store.put(syncedRow({
     ...serverRow,
     // Preserve local-only metadata fields
-    pdf_url:        serverRow.pdf_url ?? localRow?.pdf_url ?? null,
-    deleted_at:     null,  // Supabase doesn't have soft deletes — if row exists it's live
+    pdf_url:    serverRow.pdf_url ?? localRow?.pdf_url ?? null,
+    is_deleted: 0,  // If the server returned the row, it exists — not deleted
   }, serverRow.updated_at));
 }
 
@@ -640,7 +638,6 @@ export async function resolveConflictKeepLocal(entityType, entityId) {
   await store.put(resolved);
 
   // Re-enqueue as UPDATE
-  const { getDb: _getDb, QUEUE_STATUS } = await import("./local-db");
   const { v4: uuidv4 } = await import("uuid");
 
   await db.sync_queue.add({

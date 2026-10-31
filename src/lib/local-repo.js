@@ -1,13 +1,13 @@
 /**
  * local-repo.js
  * ─────────────────────────────────────────────────────────────────────────────
- * Local-first data repository that sits between UI components and IndexedDB.
+ * Local-first CRUD layer backed by IndexedDB (Dexie).
+ * All reads/writes go through here — Supabase is never touched from this file.
  *
- * This module mirrors the public API of workshop-data.js so pages can swap
- * their import with zero changes. All writes go to IndexedDB immediately and
- * enqueue a cloud sync operation; reads come from IndexedDB only.
- *
- * Supabase is never touched here — that is sync-engine.js's job.
+ * Key design choices:
+ *  • is_deleted = 0 (live) | 1 (soft-deleted) — avoids Dexie null-index issues
+ *  • sync_queue deduplication uses simple entity_id + operation lookup via filter()
+ *  • All public functions mirror workshop-data.js signatures exactly
  */
 
 import { v4 as uuidv4 } from "uuid";
@@ -21,7 +21,7 @@ import {
 } from "./local-db";
 import { normalizePhoneNumber, generateId } from "./helpers";
 
-// ─── Internal helpers ─────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function now() {
   return new Date().toISOString();
@@ -31,66 +31,78 @@ function newId() {
   return uuidv4();
 }
 
+/** Returns all live (non-deleted) rows from a table. */
+async function liveRows(table) {
+  return table.filter((r) => !r.is_deleted).toArray();
+}
+
+// ─── Sync queue ───────────────────────────────────────────────────────────────
+
 /**
- * Adds an entry to the sync_queue.
- * @param {string} entityType - e.g. "customers"
- * @param {string} entityId   - UUID of the affected row
- * @param {string} operation  - QUEUE_OP.CREATE | UPDATE | DELETE
- * @param {object} payload    - data to upload (null for DELETE)
+ * Enqueue a sync operation. Deduplicates by entity_id + operation.
+ * If a pending CREATE exists and we are now queueing a DELETE, cancels the CREATE
+ * (the entity never reached the server so no server-side delete is needed).
  */
 async function enqueue(entityType, entityId, operation, payload = null) {
-  const db = getDb();
-  const opId = uuidv4();
+  const db  = getDb();
+  const opId = newId();
 
-  // Deduplicate: if a pending op for the same entity+operation exists, update it.
-  const existing = await db.sync_queue
-    .where("[entity_type+entity_id+operation]")
-    .equals([entityType, entityId, operation])
-    .and((r) => r.status === QUEUE_STATUS.PENDING)
-    .first()
-    .catch(() => null);
+  // Find any existing pending op for this entity + operation
+  const allPending = await db.sync_queue
+    .where("status")
+    .equals(QUEUE_STATUS.PENDING)
+    .filter((r) => r.entity_id === entityId)
+    .toArray();
 
-  if (existing) {
-    await db.sync_queue.update(existing._seq, {
+  const existingOp = allPending.find((r) => r.operation === operation);
+
+  // If same op already queued — update payload only
+  if (existingOp) {
+    await db.sync_queue.update(existingOp._seq, {
       payload,
-      created_at: now(),
-      retry_count: 0,
+      created_at:        now(),
+      retry_count:       0,
       last_attempted_at: null,
-      error_message: null,
+      error_message:     null,
     });
     return;
   }
 
-  // Also remove a previous CREATE/UPDATE if we are now adding a DELETE,
-  // or collapse a CREATE + UPDATE into a single CREATE.
+  // DELETE cancels any pending CREATE (entity never reached server)
   if (operation === QUEUE_OP.DELETE) {
-    // Remove any pending CREATE or UPDATE for the same entity — they never
-    // need to go to the server if the entity is being deleted locally.
-    const pendingCreate = await db.sync_queue
-      .where("[entity_type+entity_id+operation]")
-      .equals([entityType, entityId, QUEUE_OP.CREATE])
-      .and((r) => r.status === QUEUE_STATUS.PENDING)
-      .first()
-      .catch(() => null);
-
+    const pendingCreate = allPending.find((r) => r.operation === QUEUE_OP.CREATE);
     if (pendingCreate) {
-      // Entity was created locally and never synced — no server op needed.
       await db.sync_queue.delete(pendingCreate._seq);
-      return; // local-only entity deleted — no queue entry needed
+      return; // No server delete needed — entity was local-only
+    }
+  }
+
+  // UPDATE can collapse into a pending CREATE (update the payload, not add a new op)
+  if (operation === QUEUE_OP.UPDATE) {
+    const pendingCreate = allPending.find((r) => r.operation === QUEUE_OP.CREATE);
+    if (pendingCreate) {
+      await db.sync_queue.update(pendingCreate._seq, {
+        payload,
+        created_at:        now(),
+        retry_count:       0,
+        last_attempted_at: null,
+        error_message:     null,
+      });
+      return;
     }
   }
 
   await db.sync_queue.add({
-    op_id:            opId,
-    entity_type:      entityType,
-    entity_id:        entityId,
+    op_id:             opId,
+    entity_type:       entityType,
+    entity_id:         entityId,
     operation,
     payload,
-    status:           QUEUE_STATUS.PENDING,
-    created_at:       now(),
-    retry_count:      0,
+    status:            QUEUE_STATUS.PENDING,
+    created_at:        now(),
+    retry_count:       0,
     last_attempted_at: null,
-    error_message:    null,
+    error_message:     null,
   });
 }
 
@@ -104,30 +116,27 @@ export function isLocalReady() {
   }
 }
 
-// ─── loadWorkshopData (mirrors workshop-data.js) ──────────────────────────────
+// ─── loadWorkshopData ─────────────────────────────────────────────────────────
 
 export async function loadWorkshopData() {
   const db = getDb();
 
   const [customers, vehicles, bills, rawBillItems] = await Promise.all([
-    db.customers.where("deleted_at").equals("").or("deleted_at").equals(null).sortBy("created_at"),
-    db.vehicles.where("deleted_at").equals("").or("deleted_at").equals(null).sortBy("created_at"),
-    db.bills.where("deleted_at").equals("").or("deleted_at").equals(null).toArray(),
-    db.bill_items.where("deleted_at").equals("").or("deleted_at").equals(null).sortBy("sort_order"),
+    liveRows(db.customers),
+    liveRows(db.vehicles),
+    liveRows(db.bills),
+    liveRows(db.bill_items),
   ]);
 
-  // Sort bills by bill_number DESC (latest first)
   const sortedBills = [...bills].sort(
     (a, b) => (b.bill_number ?? 0) - (a.bill_number ?? 0)
   );
-
-  // Sort bill_items by sort_order within each bill
   const billItems = [...rawBillItems].sort(
     (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
   );
 
   return {
-    source: "local",
+    source:    "local",
     customers: customers || [],
     vehicles:  vehicles  || [],
     bills:     sortedBills || [],
@@ -143,7 +152,7 @@ export async function fetchBillItemsByBillId(billId) {
   const items = await db.bill_items
     .where("bill_id")
     .equals(billId)
-    .and((i) => !i.deleted_at)
+    .filter((i) => !i.is_deleted)
     .toArray();
   return items.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
 }
@@ -154,50 +163,42 @@ export async function saveCustomerWithVehicles({ customer, vehicles, userId }) {
   const db = getDb();
   const ts = now();
 
-  // Validate phone uniqueness locally
   const phone = normalizePhoneNumber(customer?.phone_number || "");
   if (phone) {
-    const existing = await db.customers
+    const dup = await db.customers
       .where("phone_number")
       .equals(phone)
-      .and((c) => !c.deleted_at)
+      .filter((c) => !c.is_deleted)
       .first();
-    if (existing) {
-      throw new Error("Customer already exists with this phone number.");
-    }
+    if (dup) throw new Error("Customer already exists with this phone number.");
   }
 
   const validVehicles = (vehicles || []).filter(
     (v) => v.vehicle_number?.trim() || v.make?.trim() || v.model?.trim() || v.year || v.color?.trim()
   );
 
-  // Validate vehicle number uniqueness locally
   for (const v of validVehicles) {
     const num = v.vehicle_number?.trim().toUpperCase();
     if (num) {
-      const existing = await db.vehicles
+      const dup = await db.vehicles
         .where("vehicle_number")
         .equals(num)
-        .and((x) => !x.deleted_at)
+        .filter((x) => !x.is_deleted)
         .first();
-      if (existing) {
-        throw new Error(`Vehicle number ${num} is already registered.`);
-      }
+      if (dup) throw new Error(`Vehicle number ${num} is already registered.`);
     }
   }
 
   const customerId = customer.id || newId();
-
   const customerRow = pendingRow({
     id:           customerId,
     user_id:      userId,
     name:         customer.name?.trim() || "",
     phone_number: phone,
-    email:        customer.email?.trim() || null,
+    email:        customer.email?.trim()   || null,
     address:      customer.address?.trim() || null,
     created_at:   ts,
     updated_at:   ts,
-    deleted_at:   null,
   });
 
   const createdVehicles = [];
@@ -207,8 +208,8 @@ export async function saveCustomerWithVehicles({ customer, vehicles, userId }) {
     await enqueue("customers", customerId, QUEUE_OP.CREATE, customerRow);
 
     for (let i = 0; i < validVehicles.length; i++) {
-      const v = validVehicles[i];
-      const vehicleId = v.id || newId();
+      const v          = validVehicles[i];
+      const vehicleId  = v.id || newId();
       const vehicleRow = pendingRow({
         id:             vehicleId,
         customer_id:    customerId,
@@ -216,15 +217,13 @@ export async function saveCustomerWithVehicles({ customer, vehicles, userId }) {
         vehicle_number: v.vehicle_number?.trim()
           ? v.vehicle_number.trim().toUpperCase()
           : `TEMP-${generateId()}`,
-        make:           v.make?.trim()  || null,
-        model:          v.model?.trim() || null,
-        year:           v.year ? Number(v.year) : null,
-        color:          v.color?.trim() || null,
-        created_at:     ts,
-        updated_at:     ts,
-        deleted_at:     null,
+        make:       v.make?.trim()  || null,
+        model:      v.model?.trim() || null,
+        year:       v.year ? Number(v.year) : null,
+        color:      v.color?.trim() || null,
+        created_at: ts,
+        updated_at: ts,
       });
-
       await db.vehicles.put(vehicleRow);
       await enqueue("vehicles", vehicleId, QUEUE_OP.CREATE, vehicleRow);
       createdVehicles.push(vehicleRow);
@@ -238,8 +237,7 @@ export async function saveCustomerWithVehicles({ customer, vehicles, userId }) {
 
 export async function updateCustomer(customer) {
   if (!customer?.id) throw new Error("Customer ID is required.");
-  const db = getDb();
-
+  const db       = getDb();
   const existing = await db.customers.get(customer.id);
   if (!existing) throw new Error("Customer not found.");
 
@@ -270,14 +268,13 @@ export async function saveVehicle(vehicle, isEditing, userId) {
     ? vehicle.vehicle_number.trim().toUpperCase()
     : "";
 
-  // Duplicate check
   if (cleanNumber && (!isEditing || cleanNumber !== vehicle.original_vehicle_number)) {
-    const existing = await db.vehicles
+    const dup = await db.vehicles
       .where("vehicle_number")
       .equals(cleanNumber)
-      .and((v) => !v.deleted_at)
+      .filter((v) => !v.is_deleted)
       .first();
-    if (existing && (!isEditing || existing.id !== vehicle.id)) {
+    if (dup && (!isEditing || dup.id !== vehicle.id)) {
       throw new Error(`Vehicle number ${cleanNumber} is already registered.`);
     }
   }
@@ -304,28 +301,27 @@ export async function saveVehicle(vehicle, isEditing, userId) {
       await enqueue("vehicles", vehicle.id, QUEUE_OP.UPDATE, updated);
     });
     return updated;
-  } else {
-    const vehicleId = newId();
-    const row = pendingRow({
-      id:             vehicleId,
-      customer_id:    vehicle.customer_id,
-      user_id:        userId,
-      vehicle_number: cleanNumber || `TEMP-${generateId()}`,
-      make:           vehicle.make?.trim()  || null,
-      model:          vehicle.model?.trim() || null,
-      year:           vehicle.year ? Number(vehicle.year) : null,
-      color:          vehicle.color?.trim() || null,
-      created_at:     ts,
-      updated_at:     ts,
-      deleted_at:     null,
-    });
-
-    await db.transaction("rw", db.vehicles, db.sync_queue, async () => {
-      await db.vehicles.put(row);
-      await enqueue("vehicles", vehicleId, QUEUE_OP.CREATE, row);
-    });
-    return row;
   }
+
+  const vehicleId = newId();
+  const row = pendingRow({
+    id:             vehicleId,
+    customer_id:    vehicle.customer_id,
+    user_id:        userId,
+    vehicle_number: cleanNumber || `TEMP-${generateId()}`,
+    make:           vehicle.make?.trim()  || null,
+    model:          vehicle.model?.trim() || null,
+    year:           vehicle.year ? Number(vehicle.year) : null,
+    color:          vehicle.color?.trim() || null,
+    created_at:     ts,
+    updated_at:     ts,
+  });
+
+  await db.transaction("rw", db.vehicles, db.sync_queue, async () => {
+    await db.vehicles.put(row);
+    await enqueue("vehicles", vehicleId, QUEUE_OP.CREATE, row);
+  });
+  return row;
 }
 
 // ─── saveBillWithItems ────────────────────────────────────────────────────────
@@ -334,7 +330,7 @@ export async function saveBillWithItems({ bill, items, isEditing, userId }) {
   const db = getDb();
   const ts = now();
 
-  // ── Walk-in customer / vehicle resolution ──────────────────────────────────
+  // ── Walk-in customer ──────────────────────────────────────────────────────
   let customerId = bill.customer_id;
   let vehicleId  = bill.vehicle_id;
 
@@ -342,59 +338,45 @@ export async function saveBillWithItems({ bill, items, isEditing, userId }) {
     const walkIn = await db.customers
       .where("phone_number")
       .equals("910000000000")
-      .and((c) => !c.deleted_at)
+      .filter((c) => !c.is_deleted)
       .first();
 
     if (walkIn) {
       customerId = walkIn.id;
     } else {
       customerId = newId();
-      const walkInCustomer = pendingRow({
-        id:           customerId,
-        user_id:      userId,
-        name:         "Walk-in Customer",
-        phone_number: "910000000000",
-        email:        null,
-        address:      null,
-        created_at:   ts,
-        updated_at:   ts,
-        deleted_at:   null,
+      const wc = pendingRow({
+        id: customerId, user_id: userId,
+        name: "Walk-in Customer", phone_number: "910000000000",
+        email: null, address: null, created_at: ts, updated_at: ts,
       });
-      await db.customers.put(walkInCustomer);
-      await enqueue("customers", customerId, QUEUE_OP.CREATE, walkInCustomer);
+      await db.customers.put(wc);
+      await enqueue("customers", customerId, QUEUE_OP.CREATE, wc);
     }
   }
 
   if (!vehicleId) {
-    const walkInVehicle = await db.vehicles
+    const walkInV = await db.vehicles
       .where("customer_id")
       .equals(customerId)
-      .and((v) => v.vehicle_number === "WALK-IN" && !v.deleted_at)
+      .filter((v) => v.vehicle_number === "WALK-IN" && !v.is_deleted)
       .first();
 
-    if (walkInVehicle) {
-      vehicleId = walkInVehicle.id;
+    if (walkInV) {
+      vehicleId = walkInV.id;
     } else {
       vehicleId = newId();
-      const walkInV = pendingRow({
-        id:             vehicleId,
-        customer_id:    customerId,
-        user_id:        userId,
-        vehicle_number: "WALK-IN",
-        make:           "General",
-        model:          "Vehicle",
-        year:           null,
-        color:          null,
-        created_at:     ts,
-        updated_at:     ts,
-        deleted_at:     null,
+      const wv = pendingRow({
+        id: vehicleId, customer_id: customerId, user_id: userId,
+        vehicle_number: "WALK-IN", make: "General", model: "Vehicle",
+        year: null, color: null, created_at: ts, updated_at: ts,
       });
-      await db.vehicles.put(walkInV);
-      await enqueue("vehicles", vehicleId, QUEUE_OP.CREATE, walkInV);
+      await db.vehicles.put(wv);
+      await enqueue("vehicles", vehicleId, QUEUE_OP.CREATE, wv);
     }
   }
 
-  // ── Financial calculation ──────────────────────────────────────────────────
+  // ── Financial calculation ─────────────────────────────────────────────────
   const itemsProvided = items !== undefined && items !== null;
   let subtotal     = Number(bill.subtotal     || 0);
   let discount     = Number(bill.discount     || 0);
@@ -409,31 +391,27 @@ export async function saveBillWithItems({ bill, items, isEditing, userId }) {
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       if (!item.description?.trim()) continue;
-
       const qty   = Math.max(0, Number(item.quantity   || 0));
       const price = Math.max(0, Number(item.unit_price || 0));
       const total = Math.round(qty * price * 100) / 100;
       subtotal += total;
-
       cleanItems.push({
         description: item.description.trim(),
-        quantity:    qty,
-        unit_price:  price,
-        total_price: total,
-        sort_order:  i,
+        quantity: qty, unit_price: price,
+        total_price: total, sort_order: i,
       });
     }
 
-    subtotal  = Math.round(subtotal * 100) / 100;
-    discount  = Math.max(0, Math.min(Number(bill.discount || 0), subtotal));
-    const taxableAmount = Math.max(0, subtotal - discount);
-    const gstRate  = bill.gst_enabled ? Number(bill.gst_rate ?? 18) : 0;
-    tax_amount   = Math.round(taxableAmount * (gstRate / 100) * 100) / 100;
-    total_amount = Math.round((taxableAmount + tax_amount) * 100) / 100;
+    subtotal     = Math.round(subtotal * 100) / 100;
+    discount     = Math.max(0, Math.min(Number(bill.discount || 0), subtotal));
+    const taxable = Math.max(0, subtotal - discount);
+    const gstRate = bill.gst_enabled ? Number(bill.gst_rate ?? 18) : 0;
+    tax_amount   = Math.round(taxable * (gstRate / 100) * 100) / 100;
+    total_amount = Math.round((taxable + tax_amount) * 100) / 100;
   }
 
-  // ── Status / paid_amount alignment ────────────────────────────────────────
-  let status     = bill.status;
+  // ── Status / paid alignment ───────────────────────────────────────────────
+  let status      = bill.status;
   let paid_amount = Number(bill.paid_amount || 0);
 
   if (status === "paid") {
@@ -441,16 +419,11 @@ export async function saveBillWithItems({ bill, items, isEditing, userId }) {
   } else if (status === "pending" || status === "draft" || status === "cancelled") {
     paid_amount = 0;
   } else if (status === "partially_paid") {
-    if (paid_amount <= 0) {
-      paid_amount = 0;
-      status = "pending";
-    } else if (paid_amount >= total_amount) {
-      paid_amount = total_amount;
-      status = "paid";
-    }
+    if (paid_amount <= 0) { paid_amount = 0; status = "pending"; }
+    else if (paid_amount >= total_amount) { paid_amount = total_amount; status = "paid"; }
   }
 
-  // ── Payment history ────────────────────────────────────────────────────────
+  // ── Payment history ───────────────────────────────────────────────────────
   let payment_history = Array.isArray(bill.payment_history) ? [...bill.payment_history] : [];
 
   if (isEditing && !itemsProvided) {
@@ -459,23 +432,17 @@ export async function saveBillWithItems({ bill, items, isEditing, userId }) {
       const currentPaid = Number(currentBill.paid_amount || 0);
       const nextPaid    = Number(paid_amount);
       const hist        = Array.isArray(currentBill.payment_history)
-        ? [...currentBill.payment_history]
-        : [];
+        ? [...currentBill.payment_history] : [];
 
       if (nextPaid !== currentPaid) {
         if (nextPaid > currentPaid) {
-          hist.push({
-            date:   ts,
-            amount: nextPaid - currentPaid,
-            method: bill.payment_method || "cash",
-          });
+          hist.push({ date: ts, amount: nextPaid - currentPaid, method: bill.payment_method || "cash" });
+          payment_history = hist;
         } else {
           payment_history = nextPaid > 0
             ? [{ date: ts, amount: nextPaid, method: bill.payment_method || "cash" }]
             : [];
-          payment_history = payment_history;
         }
-        payment_history = nextPaid > currentPaid ? hist : payment_history;
       } else {
         payment_history = hist;
       }
@@ -484,54 +451,47 @@ export async function saveBillWithItems({ bill, items, isEditing, userId }) {
     payment_history = [{ date: ts, amount: paid_amount, method: bill.payment_method || "cash" }];
   }
 
-  // ── Assign local bill_number for new bills ─────────────────────────────────
-  // We assign a temporary local bill_number as MAX+1 among local bills.
-  // The server will confirm or override this on sync.
+  // ── Assign local bill_number ──────────────────────────────────────────────
   let bill_number = bill.bill_number;
   if (!isEditing || !bill_number) {
     const allBills = await db.bills
-      .where("user_id").equals(userId)
-      .and((b) => !b.deleted_at)
+      .filter((b) => b.user_id === userId && !b.is_deleted)
       .toArray();
-    const maxNum = allBills.reduce(
-      (m, b) => Math.max(m, b.bill_number ?? 0),
-      0
-    );
-    bill_number = maxNum + 1;
+    const maxNum = allBills.reduce((m, b) => Math.max(m, b.bill_number ?? 0), 0);
+    bill_number  = maxNum + 1;
   }
 
-  // ── Persist to IndexedDB ───────────────────────────────────────────────────
   const billId = isEditing ? bill.id : (bill.id || newId());
+  const existingBill = isEditing ? (await db.bills.get(billId) || {}) : {};
 
   const billRow = pendingRow({
-    ...(isEditing ? (await db.bills.get(billId) || {}) : {}),
-    id:              billId,
+    ...existingBill,
+    id:             billId,
     bill_number,
-    customer_id:     customerId,
-    vehicle_id:      vehicleId,
-    user_id:         userId,
-    kms_run:         bill.kms_run ? Number(bill.kms_run) : null,
+    customer_id:    customerId,
+    vehicle_id:     vehicleId,
+    user_id:        userId,
+    kms_run:        bill.kms_run ? Number(bill.kms_run) : null,
     subtotal,
     tax_amount,
     discount,
     total_amount,
     status,
-    payment_method:  bill.payment_method || null,
+    payment_method: bill.payment_method || null,
     paid_amount,
-    notes:           bill.notes || null,
-    pdf_url:         bill.pdf_url || null,
+    notes:          bill.notes || null,
+    pdf_url:        bill.pdf_url || null,
     payment_history,
-    gst_enabled:     bill.gst_enabled ?? false,
-    gst_rate:        bill.gst_rate ?? 18,
-    created_at:      bill.created_at || ts,
-    updated_at:      ts,
-    deleted_at:      null,
+    gst_enabled:    bill.gst_enabled ?? false,
+    gst_rate:       bill.gst_rate ?? 18,
+    created_at:     bill.created_at || ts,
+    updated_at:     ts,
   });
 
   const itemRows = cleanItems.map((item, i) => {
-    const existingId = (items?.[i]?.id) || newId();
+    const existingItemId = items?.[i]?.id || newId();
     return pendingRow({
-      id:          existingId,
+      id:          existingItemId,
       bill_id:     billId,
       user_id:     userId,
       description: item.description,
@@ -540,46 +500,32 @@ export async function saveBillWithItems({ bill, items, isEditing, userId }) {
       total_price: item.total_price,
       sort_order:  item.sort_order,
       created_at:  ts,
-      deleted_at:  null,
     });
   });
 
-  await db.transaction(
-    "rw",
-    db.bills,
-    db.bill_items,
-    db.sync_queue,
-    async () => {
-      await db.bills.put(billRow);
+  await db.transaction("rw", db.bills, db.bill_items, db.sync_queue, async () => {
+    await db.bills.put(billRow);
 
-      if (itemsProvided) {
-        // Soft-delete old items
-        const oldItems = await db.bill_items
-          .where("bill_id")
-          .equals(billId)
-          .toArray();
-        for (const old of oldItems) {
-          await db.bill_items.put({ ...old, deleted_at: ts });
-        }
-        // Put new items
-        for (const row of itemRows) {
-          await db.bill_items.put(row);
-        }
+    if (itemsProvided) {
+      // Soft-delete old items
+      const oldItems = await db.bill_items.where("bill_id").equals(billId).toArray();
+      for (const old of oldItems) {
+        await db.bill_items.put({ ...old, is_deleted: 1, sync_status: SYNC_STATUS.PENDING });
       }
-
-      await enqueue(
-        "bills",
-        billId,
-        isEditing ? QUEUE_OP.UPDATE : QUEUE_OP.CREATE,
-        { bill: billRow, items: itemsProvided ? itemRows : undefined }
-      );
+      for (const row of itemRows) {
+        await db.bill_items.put(row);
+      }
     }
-  );
 
-  return {
-    bill:  billRow,
-    items: itemsProvided ? itemRows : [],
-  };
+    await enqueue(
+      "bills",
+      billId,
+      isEditing ? QUEUE_OP.UPDATE : QUEUE_OP.CREATE,
+      { bill: billRow, items: itemsProvided ? itemRows : undefined }
+    );
+  });
+
+  return { bill: billRow, items: itemsProvided ? itemRows : [] };
 }
 
 // ─── loadProfile ──────────────────────────────────────────────────────────────
@@ -587,39 +533,28 @@ export async function saveBillWithItems({ bill, items, isEditing, userId }) {
 export async function loadProfile(userId) {
   const db = getDb();
   const profile = await db.business_profile
-    .where("user_id")
-    .equals(userId || "")
+    .filter((p) => p.user_id === userId && !p.is_deleted)
     .first();
   if (profile) return profile;
 
-  // Return defaults (same as workshop-data.js)
   return {
-    id:              null,
-    name:            "Shree Royal Car",
-    tagline:         "Automotive Repair & Car Wash",
-    established:     "2004",
-    address:         "Ahmedabad, Gujarat",
-    phone:           "+91 98765 43210",
-    email:           "billing@shreeroyalcar.in",
-    gstin:           "",
+    id: null, name: "Shree Royal Car",
+    tagline: "Automotive Repair & Car Wash", established: "2004",
+    address: "Ahmedabad, Gujarat", phone: "+91 98765 43210",
+    email: "billing@shreeroyalcar.in", gstin: "",
     payment_methods: "UPI / Bank Transfer / Cash",
-    upi_id:          "",
-    bank_name:       "",
-    account_number:  "",
-    ifsc:            "",
-    invoice_notes:   "Payment due within 7 days of invoice date.",
+    upi_id: "", bank_name: "", account_number: "", ifsc: "",
+    invoice_notes: "Payment due within 7 days of invoice date.",
   };
 }
 
 // ─── saveProfile ──────────────────────────────────────────────────────────────
 
 export async function saveProfile(profile, userId) {
-  const db = getDb();
-  const ts = now();
-
+  const db  = getDb();
+  const ts  = now();
   const existing = await db.business_profile
-    .where("user_id")
-    .equals(userId || "")
+    .filter((p) => p.user_id === userId && !p.is_deleted)
     .first();
 
   const row = pendingRow({
@@ -632,25 +567,20 @@ export async function saveProfile(profile, userId) {
     address:         profile.address,
     phone:           profile.phone,
     email:           profile.email,
-    gstin:           profile.gstin           ?? "",
+    gstin:           profile.gstin            ?? "",
     payment_methods: profile.payment_methods,
-    upi_id:          profile.upi_id          ?? "",
-    bank_name:       profile.bank_name        ?? "",
-    account_number:  profile.account_number   ?? "",
-    ifsc:            profile.ifsc             ?? "",
-    invoice_notes:   profile.invoice_notes    ?? "",
+    upi_id:          profile.upi_id           ?? "",
+    bank_name:       profile.bank_name         ?? "",
+    account_number:  profile.account_number    ?? "",
+    ifsc:            profile.ifsc              ?? "",
+    invoice_notes:   profile.invoice_notes     ?? "",
     created_at:      existing?.created_at || ts,
     updated_at:      ts,
   });
 
   await db.transaction("rw", db.business_profile, db.sync_queue, async () => {
     await db.business_profile.put(row);
-    await enqueue(
-      "business_profile",
-      row.id,
-      existing ? QUEUE_OP.UPDATE : QUEUE_OP.CREATE,
-      row
-    );
+    await enqueue("business_profile", row.id, existing ? QUEUE_OP.UPDATE : QUEUE_OP.CREATE, row);
   });
 
   return row;
@@ -665,43 +595,29 @@ export async function deleteCustomer(customerId) {
   const customerBills = await db.bills
     .where("customer_id")
     .equals(customerId)
-    .and((b) => !b.deleted_at)
+    .filter((b) => !b.is_deleted)
     .toArray();
 
   await db.transaction(
-    "rw",
-    db.customers,
-    db.vehicles,
-    db.bills,
-    db.bill_items,
-    db.sync_queue,
+    "rw", db.customers, db.vehicles, db.bills, db.bill_items, db.sync_queue,
     async () => {
-      // Soft-delete bill items and bills
       for (const bill of customerBills) {
         await db.bill_items
-          .where("bill_id")
-          .equals(bill.id)
-          .modify({ deleted_at: ts, sync_status: SYNC_STATUS.PENDING });
-
-        const updBill = { ...bill, deleted_at: ts, sync_status: SYNC_STATUS.PENDING, updated_at: ts };
-        await db.bills.put(updBill);
+          .where("bill_id").equals(bill.id)
+          .modify({ is_deleted: 1, sync_status: SYNC_STATUS.PENDING });
+        await db.bills.put({ ...bill, is_deleted: 1, sync_status: SYNC_STATUS.PENDING, updated_at: ts });
         await enqueue("bills", bill.id, QUEUE_OP.DELETE, null);
       }
 
-      // Soft-delete vehicles
-      const customerVehicles = await db.vehicles
-        .where("customer_id")
-        .equals(customerId)
-        .toArray();
+      const customerVehicles = await db.vehicles.where("customer_id").equals(customerId).toArray();
       for (const v of customerVehicles) {
-        await db.vehicles.put({ ...v, deleted_at: ts, sync_status: SYNC_STATUS.PENDING, updated_at: ts });
+        await db.vehicles.put({ ...v, is_deleted: 1, sync_status: SYNC_STATUS.PENDING, updated_at: ts });
         await enqueue("vehicles", v.id, QUEUE_OP.DELETE, null);
       }
 
-      // Soft-delete customer
       const c = await db.customers.get(customerId);
       if (c) {
-        await db.customers.put({ ...c, deleted_at: ts, sync_status: SYNC_STATUS.PENDING, updated_at: ts });
+        await db.customers.put({ ...c, is_deleted: 1, sync_status: SYNC_STATUS.PENDING, updated_at: ts });
         await enqueue("customers", customerId, QUEUE_OP.DELETE, null);
       }
     }
@@ -715,32 +631,23 @@ export async function deleteVehicle(vehicleId) {
   const ts = now();
 
   const vehicleBills = await db.bills
-    .where("vehicle_id")
-    .equals(vehicleId)
-    .and((b) => !b.deleted_at)
+    .where("vehicle_id").equals(vehicleId)
+    .filter((b) => !b.is_deleted)
     .toArray();
 
   await db.transaction(
-    "rw",
-    db.vehicles,
-    db.bills,
-    db.bill_items,
-    db.sync_queue,
+    "rw", db.vehicles, db.bills, db.bill_items, db.sync_queue,
     async () => {
       for (const bill of vehicleBills) {
         await db.bill_items
-          .where("bill_id")
-          .equals(bill.id)
-          .modify({ deleted_at: ts, sync_status: SYNC_STATUS.PENDING });
-
-        const updBill = { ...bill, deleted_at: ts, sync_status: SYNC_STATUS.PENDING, updated_at: ts };
-        await db.bills.put(updBill);
+          .where("bill_id").equals(bill.id)
+          .modify({ is_deleted: 1, sync_status: SYNC_STATUS.PENDING });
+        await db.bills.put({ ...bill, is_deleted: 1, sync_status: SYNC_STATUS.PENDING, updated_at: ts });
         await enqueue("bills", bill.id, QUEUE_OP.DELETE, null);
       }
-
       const v = await db.vehicles.get(vehicleId);
       if (v) {
-        await db.vehicles.put({ ...v, deleted_at: ts, sync_status: SYNC_STATUS.PENDING, updated_at: ts });
+        await db.vehicles.put({ ...v, is_deleted: 1, sync_status: SYNC_STATUS.PENDING, updated_at: ts });
         await enqueue("vehicles", vehicleId, QUEUE_OP.DELETE, null);
       }
     }
@@ -750,26 +657,17 @@ export async function deleteVehicle(vehicleId) {
 // ─── deleteBill ───────────────────────────────────────────────────────────────
 
 export async function deleteBill(billId) {
-  const db = getDb();
-  const ts = now();
+  const db   = getDb();
+  const ts   = now();
   const bill = await db.bills.get(billId);
   if (!bill) throw new Error("Bill not found.");
 
   await db.transaction("rw", db.bills, db.bill_items, db.sync_queue, async () => {
-    // Soft-delete items
     await db.bill_items
-      .where("bill_id")
-      .equals(billId)
-      .modify({ deleted_at: ts, sync_status: SYNC_STATUS.PENDING });
+      .where("bill_id").equals(billId)
+      .modify({ is_deleted: 1, sync_status: SYNC_STATUS.PENDING });
 
-    // Soft-delete bill
-    await db.bills.put({
-      ...bill,
-      deleted_at:  ts,
-      sync_status: SYNC_STATUS.PENDING,
-      updated_at:  ts,
-    });
-
+    await db.bills.put({ ...bill, is_deleted: 1, sync_status: SYNC_STATUS.PENDING, updated_at: ts });
     await enqueue("bills", billId, QUEUE_OP.DELETE, null);
   });
 }
@@ -777,51 +675,44 @@ export async function deleteBill(billId) {
 // ─── Workers ──────────────────────────────────────────────────────────────────
 
 export async function loadWorkers() {
-  const db = getDb();
-  const workers = await db.workers
-    .filter((w) => !w.deleted_at)
-    .toArray();
+  const db      = getDb();
+  const workers = await liveRows(db.workers);
   return workers.sort((a, b) => new Date(b.joined_at || 0) - new Date(a.joined_at || 0));
 }
 
 export async function saveWorker(worker) {
-  const db = getDb();
-  const ts = now();
+  const db       = getDb();
+  const ts       = now();
   const isEditing = Boolean(worker.id);
-
-  const existing = isEditing ? await db.workers.get(worker.id) : null;
-  const workerId = worker.id || newId();
-
+  const existing  = isEditing ? await db.workers.get(worker.id) : null;
+  const workerId  = worker.id || newId();
   const { id: _id, ...payload } = worker;
+
   const row = pendingRow({
     ...(existing || {}),
     id:          workerId,
     name:        payload.name,
     role:        payload.role,
-    phone:       payload.phone   || null,
+    phone:       payload.phone       || null,
     base_salary: payload.base_salary || 0,
-    is_active:   payload.is_active  ?? true,
-    joined_at:   payload.joined_at  || ts.split("T")[0],
+    is_active:   payload.is_active   ?? true,
+    joined_at:   payload.joined_at   || ts.split("T")[0],
     created_at:  existing?.created_at || ts,
     updated_at:  ts,
-    deleted_at:  null,
   });
 
   await db.transaction("rw", db.workers, db.sync_queue, async () => {
     await db.workers.put(row);
     await enqueue("workers", workerId, isEditing ? QUEUE_OP.UPDATE : QUEUE_OP.CREATE, row);
   });
-
   return row;
 }
 
 // ─── Salary Records ───────────────────────────────────────────────────────────
 
 export async function loadSalaryRecords() {
-  const db = getDb();
-  const records = await db.salary_records
-    .filter((r) => !r.deleted_at)
-    .toArray();
+  const db      = getDb();
+  const records = await liveRows(db.salary_records);
   return records.sort((a, b) => new Date(b.date_paid || 0) - new Date(a.date_paid || 0));
 }
 
@@ -841,23 +732,17 @@ export async function saveSalaryRecord(record) {
     date_paid:   payload.date_paid   || ts.split("T")[0],
     notes:       payload.notes       || null,
     created_at:  ts,
-    deleted_at:  null,
   });
 
   await db.transaction("rw", db.salary_records, db.sync_queue, async () => {
     await db.salary_records.put(row);
     await enqueue("salary_records", recordId, QUEUE_OP.CREATE, row);
   });
-
   return row;
 }
 
 // ─── PDF cache ────────────────────────────────────────────────────────────────
 
-/**
- * Store a locally-generated PDF blob in IndexedDB.
- * The sync engine will upload it when connectivity is available.
- */
 export async function storePdfLocally(bill, pdfBlob) {
   if (!bill?.id || !pdfBlob) return;
   const db = getDb();
@@ -870,9 +755,6 @@ export async function storePdfLocally(bill, pdfBlob) {
   });
 }
 
-/**
- * Retrieve a cached PDF blob for a bill. Returns null if not cached.
- */
 export async function getPdfFromCache(billId) {
   if (!billId) return null;
   const db = getDb();
@@ -885,24 +767,20 @@ export async function getPendingQueueOps() {
   const db = getDb();
   return await db.sync_queue
     .where("status")
-    .equals("pending")
+    .equals(QUEUE_STATUS.PENDING)
     .sortBy("_seq");
 }
 
 export async function getPendingCount() {
   const db = getDb();
-  return await db.sync_queue
-    .where("status")
-    .anyOf(["pending", "failed"])
-    .count();
+  const pending = await db.sync_queue.where("status").equals(QUEUE_STATUS.PENDING).count();
+  const failed  = await db.sync_queue.where("status").equals(QUEUE_STATUS.FAILED).count();
+  return pending + failed;
 }
 
 export async function getFailedCount() {
   const db = getDb();
-  return await db.sync_queue
-    .where("status")
-    .equals("failed")
-    .count();
+  return await db.sync_queue.where("status").equals(QUEUE_STATUS.FAILED).count();
 }
 
 export async function markQueueOpDone(seq) {
@@ -915,30 +793,30 @@ export async function markQueueOpFailed(seq, errorMessage) {
   const op = await db.sync_queue.get(seq);
   if (!op) return;
   await db.sync_queue.update(seq, {
-    status:           "failed",
-    error_message:    errorMessage,
-    retry_count:      (op.retry_count || 0) + 1,
+    status:            QUEUE_STATUS.FAILED,
+    error_message:     errorMessage,
+    retry_count:       (op.retry_count || 0) + 1,
     last_attempted_at: now(),
   });
 }
 
 export async function markQueueOpProcessing(seq) {
   const db = getDb();
-  await db.sync_queue.update(seq, { status: "processing", last_attempted_at: now() });
+  await db.sync_queue.update(seq, { status: QUEUE_STATUS.PROCESSING, last_attempted_at: now() });
 }
 
 export async function resetFailedOps() {
   const db = getDb();
   await db.sync_queue
     .where("status")
-    .equals("failed")
-    .modify({ status: "pending", retry_count: 0, error_message: null });
+    .equals(QUEUE_STATUS.FAILED)
+    .modify({ status: QUEUE_STATUS.PENDING, retry_count: 0, error_message: null });
 }
 
 // ─── App settings ─────────────────────────────────────────────────────────────
 
 export async function getAppSetting(key) {
-  const db = getDb();
+  const db  = getDb();
   const row = await db.app_settings.get(key);
   return row?.value ?? null;
 }
@@ -948,10 +826,10 @@ export async function setAppSetting(key, value) {
   await db.app_settings.put({ key, value });
 }
 
-// ─── Sync checkpoint ─────────────────────────────────────────────────────────
+// ─── Sync checkpoints ─────────────────────────────────────────────────────────
 
 export async function getSyncCheckpoint(tableName) {
-  const db = getDb();
+  const db  = getDb();
   const row = await db.sync_checkpoint.get(tableName);
   return row?.last_pulled_at ?? null;
 }
@@ -961,12 +839,8 @@ export async function setSyncCheckpoint(tableName, lastPulledAt) {
   await db.sync_checkpoint.put({ table_name: tableName, last_pulled_at: lastPulledAt });
 }
 
-// ─── Wipe user data (logout) ──────────────────────────────────────────────────
+// ─── Wipe user data on logout ─────────────────────────────────────────────────
 
-/**
- * Wipe all data associated with the given user from IndexedDB.
- * Called on logout ONLY after confirming no pending ops remain.
- */
 export async function wipeUserData(userId) {
   const db = getDb();
   await db.transaction(
@@ -975,12 +849,13 @@ export async function wipeUserData(userId) {
     db.workers, db.salary_records, db.business_profile,
     db.sync_queue, db.sync_checkpoint, db.pdf_cache, db.app_settings,
     async () => {
-      await db.customers.where("user_id").equals(userId).delete();
-      await db.vehicles.where("user_id").equals(userId).delete();
-      await db.bills.where("user_id").equals(userId).delete();
-      await db.bill_items.where("user_id").equals(userId).delete();
-      await db.business_profile.where("user_id").equals(userId).delete();
-      // Workers / salary_records are not user-scoped — leave them
+      if (userId) {
+        await db.customers.where("user_id").equals(userId).delete();
+        await db.vehicles.where("user_id").equals(userId).delete();
+        await db.bills.where("user_id").equals(userId).delete();
+        await db.bill_items.where("user_id").equals(userId).delete();
+        await db.business_profile.where("user_id").equals(userId).delete();
+      }
       await db.sync_queue.clear();
       await db.sync_checkpoint.clear();
       await db.pdf_cache.clear();
@@ -988,5 +863,5 @@ export async function wipeUserData(userId) {
   );
 }
 
-// Re-export QUEUE_STATUS for convenience
+// Re-export for convenience
 export { QUEUE_STATUS };
