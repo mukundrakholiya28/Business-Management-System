@@ -44,3 +44,6 @@ supabase/.temp/
 next-env.d.ts
 
 .vercel
+
+# Generated at build time — do not commit
+/public/sw-precache.json

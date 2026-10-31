@@ -1,37 +1,35 @@
 /**
  * data-layer.js
  * ─────────────────────────────────────────────────────────────────────────────
- * Unified data access layer.
+ * Unified data access layer — offline-first.
  *
- * Pages import from here, not from workshop-data.js (cloud-only) or
- * local-repo.js (local-only).  This module decides which source to use:
+ * Priority order:
+ *   1. If IndexedDB is populated → always read local (works 100% offline)
+ *   2. If IndexedDB is empty + online → pull from Supabase, store locally, return local
+ *   3. If IndexedDB is empty + offline → return empty arrays (no crash)
  *
- *   • If the local DB is populated → read/write via local-repo (offline-first).
- *   • If the local DB is empty AND we are online → do initial populate, then local.
- *   • Writes always go to local-repo immediately; the sync engine uploads to cloud.
- *
- * All function signatures are identical to workshop-data.js so existing pages
- * work with a one-line import change.
+ * Writes always go to IndexedDB immediately. Sync to Supabase happens async.
  */
 
 import { supabase } from "./supabase";
-import * as local  from "./local-repo";
-import * as cloud  from "./workshop-data";
-import { runSync, initialPopulate } from "./sync-engine";
-import { getDb, SYNC_STATUS } from "./local-db";
+import * as local from "./local-repo";
+import { getDb } from "./local-db";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 async function getCurrentUserId() {
-  if (!supabase) return null;
-  const { data: { user } } = await supabase.auth.getUser();
-  return user?.id ?? null;
+  try {
+    if (!supabase) return null;
+    const { data: { user } } = await supabase.auth.getUser();
+    return user?.id ?? null;
+  } catch {
+    return null;
+  }
 }
 
 async function isLocalPopulated() {
   try {
     const db = getDb();
-    // Consider populated if there is at least one customer or bill
     const [cCount, bCount] = await Promise.all([
       db.customers.count(),
       db.bills.count(),
@@ -42,33 +40,39 @@ async function isLocalPopulated() {
   }
 }
 
-// ─── Public API (mirrors workshop-data.js) ────────────────────────────────────
+function isOnline() {
+  return typeof navigator !== "undefined" ? navigator.onLine : false;
+}
 
-export { isSupabaseReady } from "./workshop-data";
+// ─── loadWorkshopData ─────────────────────────────────────────────────────────
 
-/**
- * Load all workshop data.
- * On the very first call for a new session, populates IndexedDB from Supabase.
- */
 export async function loadWorkshopData() {
-  const userId = await getCurrentUserId();
-
-  // Always serve from local first — much faster and works offline
   const populated = await isLocalPopulated();
 
-  if (!populated && userId) {
-    // First-time load: try to pull from Supabase, then return local data
-    try {
-      await initialPopulate(userId);
-    } catch (err) {
-      console.warn("[data-layer] initialPopulate failed:", err.message);
-      // Fall back to direct Supabase fetch if local is empty
-      const cloudData = await cloud.loadWorkshopData();
-      return cloudData;
+  if (!populated) {
+    if (!isOnline()) {
+      // Offline and no local data — return empty (first-ever use needs internet once)
+      return { source: "empty", customers: [], vehicles: [], bills: [], billItems: [] };
+    }
+    // Online but empty — do initial populate from Supabase
+    const userId = await getCurrentUserId();
+    if (userId) {
+      try {
+        const { initialPopulate } = await import("./sync-engine");
+        await initialPopulate(userId);
+      } catch (err) {
+        console.warn("[data-layer] initialPopulate failed, falling back to direct cloud fetch:", err.message);
+        // Direct cloud fetch as last resort
+        try {
+          const { loadWorkshopData: cloudLoad } = await import("./workshop-data");
+          return await cloudLoad();
+        } catch {
+          return { source: "empty", customers: [], vehicles: [], bills: [], billItems: [] };
+        }
+      }
     }
   }
 
-  // Return from local DB
   return await local.loadWorkshopData();
 }
 
@@ -76,19 +80,18 @@ export async function fetchBillItemsByBillId(billId) {
   return local.fetchBillItemsByBillId(billId);
 }
 
-// ─── Customers ───────────────────────────────────────────────────────────────
+// ─── Customers ────────────────────────────────────────────────────────────────
 
 export async function saveCustomerWithVehicles({ customer, vehicles }) {
   const userId = await getCurrentUserId();
   const result = await local.saveCustomerWithVehicles({ customer, vehicles, userId });
-  // Fire-and-forget sync
-  runSync().catch(console.warn);
+  _triggerSync();
   return result;
 }
 
 export async function updateCustomer(customer) {
   const result = await local.updateCustomer(customer);
-  runSync().catch(console.warn);
+  _triggerSync();
   return result;
 }
 
@@ -97,7 +100,7 @@ export async function updateCustomer(customer) {
 export async function saveVehicle(vehicle, isEditing) {
   const userId = await getCurrentUserId();
   const result = await local.saveVehicle(vehicle, isEditing, userId);
-  runSync().catch(console.warn);
+  _triggerSync();
   return result;
 }
 
@@ -106,25 +109,23 @@ export async function saveVehicle(vehicle, isEditing) {
 export async function saveBillWithItems({ bill, items, isEditing }) {
   const userId = await getCurrentUserId();
   const result = await local.saveBillWithItems({ bill, items, isEditing, userId });
-  runSync().catch(console.warn);
+  _triggerSync();
   return result;
 }
 
 export async function deleteBill(billId) {
   await local.deleteBill(billId);
-  runSync().catch(console.warn);
+  _triggerSync();
 }
-
-// ─── Customers / Vehicles deletion ───────────────────────────────────────────
 
 export async function deleteCustomer(customerId) {
   await local.deleteCustomer(customerId);
-  runSync().catch(console.warn);
+  _triggerSync();
 }
 
 export async function deleteVehicle(vehicleId) {
   await local.deleteVehicle(vehicleId);
-  runSync().catch(console.warn);
+  _triggerSync();
 }
 
 // ─── Profile ─────────────────────────────────────────────────────────────────
@@ -137,7 +138,7 @@ export async function loadProfile() {
 export async function saveProfile(profile) {
   const userId = await getCurrentUserId();
   const result = await local.saveProfile(profile, userId || "");
-  runSync().catch(console.warn);
+  _triggerSync();
   return result;
 }
 
@@ -149,7 +150,7 @@ export async function loadWorkers() {
 
 export async function saveWorker(worker) {
   const result = await local.saveWorker(worker);
-  runSync().catch(console.warn);
+  _triggerSync();
   return result;
 }
 
@@ -161,7 +162,7 @@ export async function loadSalaryRecords() {
 
 export async function saveSalaryRecord(record) {
   const result = await local.saveSalaryRecord(record);
-  runSync().catch(console.warn);
+  _triggerSync();
   return result;
 }
 
@@ -169,6 +170,19 @@ export async function saveSalaryRecord(record) {
 
 export { storePdfLocally, getPdfFromCache } from "./local-repo";
 
-// ─── Paginated loaders (proxied to cloud for backward compat) ─────────────────
+// ─── isSupabaseReady (backward compat) ───────────────────────────────────────
+
+export { isSupabaseReady } from "./workshop-data";
+
+// ─── Paginated loaders (still cloud-only, used in no current page) ────────────
 
 export { loadBillsPaginated, loadCustomersPaginated } from "./workshop-data";
+
+// ─── Internal: fire-and-forget sync ───────────────────────────────────────────
+
+function _triggerSync() {
+  if (!isOnline()) return; // don't even try if offline
+  import("./sync-engine")
+    .then(({ runSync }) => runSync())
+    .catch(console.warn);
+}
