@@ -1,6 +1,7 @@
 import { Inter, Oswald } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
+import LayoutClient from "@/components/LayoutClient";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -32,7 +33,9 @@ export default function RootLayout({ children }) {
     <html lang="en" className={`${inter.variable} ${oswald.variable} h-full antialiased`} suppressHydrationWarning>
       <body className="min-h-full">
         <AuthProvider>
-          {children}
+          <LayoutClient>
+            {children}
+          </LayoutClient>
         </AuthProvider>
       </body>
     </html>

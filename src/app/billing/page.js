@@ -29,7 +29,7 @@ import {
   deleteBill,
   saveVehicle,
   fetchBillItemsByBillId,
-} from "@/lib/workshop-data";
+} from "@/lib/data-layer";
 import {
   Plus,
   FileText,
@@ -197,16 +197,25 @@ function BillingPage() {
   };
 
   const persistInvoicePdf = async (bill, pdfBlob) => {
-    const storagePath = await uploadInvoicePdf(bill, pdfBlob);
-    const saved = await saveBillWithItems({
-      bill: { ...bill, pdf_url: storagePath },
-      items: undefined,
-      isEditing: true,
-    });
-    return saved.bill;
+    // If online, upload to Supabase Storage immediately
+    try {
+      const storagePath = await uploadInvoicePdf(bill, pdfBlob);
+      const saved = await saveBillWithItems({
+        bill: { ...bill, pdf_url: storagePath },
+        items: undefined,
+        isEditing: true,
+      });
+      return saved.bill;
+    } catch (uploadErr) {
+      // Offline or upload failed — PDF is already cached locally by generateInvoicePDF
+      // The sync engine will upload it when connectivity is restored
+      console.warn("[billing] PDF upload deferred (offline):", uploadErr.message);
+      return bill;
+    }
   };
 
   const exportPDF = async (bill, currentItems) => {
+    // 1. Try opening a stored cloud PDF (signed URL)
     if (bill.pdf_url) {
       try {
         const signedUrl = await createInvoiceDownloadUrl(bill.pdf_url);
@@ -214,10 +223,29 @@ function BillingPage() {
         showToast("Opening PDF...");
         return;
       } catch (error) {
-        console.warn("Stored PDF could not be opened; regenerating it.", error);
+        console.warn("Stored PDF could not be opened; trying local cache.", error);
       }
     }
 
+    // 2. Try serving from local IndexedDB cache
+    try {
+      const { getPdfFromCache } = await import("@/lib/local-repo");
+      const cached = await getPdfFromCache(bill.id);
+      if (cached?.blob) {
+        const url = URL.createObjectURL(cached.blob);
+        const a   = document.createElement("a");
+        a.href     = url;
+        a.download = `INV-${bill.bill_number}.pdf`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+        showToast("PDF downloaded (offline copy)");
+        return;
+      }
+    } catch (cacheErr) {
+      console.warn("Local PDF cache unavailable:", cacheErr.message);
+    }
+
+    // 3. Regenerate
     const customer = customers.find((c) => c.id === bill.customer_id);
     const vehicle  = vehicles.find((v) => v.id === bill.vehicle_id);
     let items = currentItems || billItems.filter((i) => i.bill_id === bill.id);
@@ -226,25 +254,28 @@ function BillingPage() {
     }
 
     try {
-      showToast("Generating & storing invoice PDF...");
+      showToast("Generating invoice PDF...");
       const pdf = await generateInvoicePDF({ bill, items, customer, vehicle });
       if (pdf) {
         const pdfBlob = pdf.output("blob");
-
         const savedBill = await persistInvoicePdf(bill, pdfBlob);
         setBills((prev) => prev.map((entry) => (entry.id === bill.id ? savedBill : entry)));
         setSelectedBill((current) => current?.id === bill.id ? savedBill : current);
-
-        // Trigger local download/open
         await exportInvoicePDF({ bill, items, customer, vehicle }, showToast);
       }
     } catch (err) {
-      console.error("Failed to generate PDF on download fallback:", err);
+      console.error("Failed to generate PDF:", err);
       showToast("Failed to generate PDF.");
     }
   };
 
   const sendToCustomer = async (bill, currentItems) => {
+    // Email and WhatsApp require internet connectivity
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      showToast("Email and WhatsApp delivery require an internet connection. Connect and try again.");
+      return;
+    }
+
     const customer = customers.find((c) => c.id === bill.customer_id);
     const vehicle  = vehicles.find((v) => v.id === bill.vehicle_id);
     let items = currentItems || billItems.filter((i) => i.bill_id === bill.id);
@@ -383,16 +414,9 @@ function BillingPage() {
   const handleDeleteBill = async (bill) => {
     try {
       await deleteBill(bill.id);
-      setBills((prev) =>
-        prev
-          .filter((b) => b.id !== bill.id)
-          .map((b) => {
-            if (b.bill_number > bill.bill_number) {
-              return { ...b, bill_number: b.bill_number - 1 };
-            }
-            return b;
-          })
-      );
+      // Remove from local state — no renumbering here;
+      // server reconciles bill_number sequence on sync
+      setBills((prev) => prev.filter((b) => b.id !== bill.id));
       setBillItems((prev) => prev.filter((i) => i.bill_id !== bill.id));
       if (selectedBill?.id === bill.id) setSelectedBill(null);
       setConfirmDeleteBill(null);

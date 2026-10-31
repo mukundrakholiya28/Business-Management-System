@@ -6,7 +6,7 @@ import Navbar from "@/components/Navbar";
 import { useProtectedRoute } from "@/context/AuthContext";
 import { PageSkeleton } from "@/components/ui";
 import { formatCurrency, formatDate } from "@/lib/helpers";
-import { loadWorkshopData } from "@/lib/workshop-data";
+import { loadWorkshopData } from "@/lib/data-layer";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,

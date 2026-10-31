@@ -8,11 +8,14 @@ const contentSecurityPolicy = [
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self' data:",
   "img-src 'self' data: blob: https://*.supabase.co",
+  // Service worker and Supabase realtime websockets
   "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
   "frame-ancestors 'none'",
+  // Allow service workers to be registered from same origin
+  "worker-src 'self'",
   ...(isDevelopment ? [] : ["upgrade-insecure-requests"]),
 ].join("; ");
 
@@ -47,7 +50,25 @@ const nextConfig = {
             value: "camera=(), geolocation=(), microphone=(), payment=(), usb=()"
           }
         ]
-      }
+      },
+      // Service worker: never cache, correct MIME type
+      {
+        source: "/sw.js",
+        headers: [
+          {
+            key: "Content-Type",
+            value: "application/javascript; charset=utf-8",
+          },
+          {
+            key: "Cache-Control",
+            value: "no-cache, no-store, must-revalidate",
+          },
+          {
+            key: "Service-Worker-Allowed",
+            value: "/",
+          },
+        ],
+      },
     ];
   }
 };

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LogOut, Settings, UserCircle } from "lucide-react";
 import GlobalSearch from "./GlobalSearch";
+import SyncIndicator from "./SyncIndicator";
 import { useAuth } from "@/context/AuthContext";
 
 const navItems = [
@@ -37,17 +38,17 @@ export default function Navbar() {
   return (
     <header className="flat-navbar sticky top-0 z-40 w-full">
 
-      {/* â”€â”€ Single row: Brand | Nav (centred) | Search + Logout â”€â”€ */}
+      {/* Single row: Brand | Nav (centred) | Search + Sync + Logout */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center">
 
-        {/* Brand â€” left */}
+        {/* Brand - left */}
         <Link href="/" className="shrink-0 hover:opacity-80 transition-opacity">
           <span className="font-oswald font-bold text-[25px] uppercase tracking-wider text-gray-900 whitespace-nowrap">
             Shree Royal Car
           </span>
         </Link>
 
-        {/* Desktop nav â€” absolutely centred */}
+        {/* Desktop nav - absolutely centred */}
         <nav className="hidden lg:flex items-center gap-0.5 absolute left-1/2 -translate-x-1/2">
           {navItems.map(({ href, label }) => {
             const isActive = pathname === href;
@@ -64,19 +65,20 @@ export default function Navbar() {
           })}
         </nav>
 
-        {/* Search + Logout â€” pushed to right */}
+        {/* Search + Sync + Logout - pushed to right */}
         <div className="flex items-center gap-2 ml-auto shrink-0">
           <GlobalSearch />
+          <SyncIndicator />
           <Link
             href="/profile"
-            className={`flat-btn-ghost p-1.5 text-gray-500 hover:text-gray-900 ${pathname === '/profile' ? 'text-gray-900' : ''}`}
+            className={`flat-btn-ghost p-1.5 text-gray-500 hover:text-gray-900 ${pathname === "/profile" ? "text-gray-900" : ""}`}
             title="Profile"
           >
             <UserCircle size={18} strokeWidth={1.5} />
           </Link>
           <Link
             href="/profile"
-            className={`flat-btn-ghost p-1.5 text-gray-500 hover:text-gray-900 ${pathname === '/profile' ? 'text-gray-900' : ''}`}
+            className={`flat-btn-ghost p-1.5 text-gray-500 hover:text-gray-900 ${pathname === "/profile" ? "text-gray-900" : ""}`}
             title="Settings"
           >
             <Settings size={16} strokeWidth={1.5} />
@@ -95,7 +97,7 @@ export default function Navbar() {
       {/* Target container for mobile search portal */}
       <div id="mobile-search-container" className="lg:hidden relative" />
 
-      {/* â”€â”€ Mobile-only pill nav strip â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* Mobile-only pill nav strip */}
       <div className="lg:hidden border-t border-gray-100">
         <div className="px-4 sm:px-6">
           <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-2">

@@ -6,7 +6,7 @@ import Navbar from "@/components/Navbar";
 import { useProtectedRoute } from "@/context/AuthContext";
 import { StatusSelect, EmptyState, Modal, PageSkeleton, PhoneNumber } from "@/components/ui";
 import { formatCurrency, formatDate, getInitials, generateId, formatPhoneNumber, getLocalDateString, formatVehicleNumber } from "@/lib/helpers";
-import { loadWorkshopData, saveBillWithItems, deleteVehicle, deleteBill, updateCustomer, saveVehicle, fetchBillItemsByBillId } from "@/lib/workshop-data";
+import { loadWorkshopData, saveBillWithItems, deleteVehicle, deleteBill, updateCustomer, saveVehicle, fetchBillItemsByBillId } from "@/lib/data-layer";
 import { exportInvoicePDF, generateInvoicePDF } from "@/lib/pdf";
 import { supabase } from "@/lib/supabase";
 import { uploadInvoicePdf, createInvoiceDownloadUrl, createInvoiceEmailUrl, downloadInvoicePdf } from "@/lib/invoice-storage";
@@ -90,13 +90,18 @@ export default function CustomerDetailPage() {
   }, 0);
 
   const persistInvoicePdf = async (bill, pdfBlob) => {
-    const storagePath = await uploadInvoicePdf(bill, pdfBlob);
-    const saved = await saveBillWithItems({
-      bill: { ...bill, pdf_url: storagePath },
-      items: undefined,
-      isEditing: true,
-    });
-    return saved.bill;
+    try {
+      const storagePath = await uploadInvoicePdf(bill, pdfBlob);
+      const saved = await saveBillWithItems({
+        bill: { ...bill, pdf_url: storagePath },
+        items: undefined,
+        isEditing: true,
+      });
+      return saved.bill;
+    } catch (uploadErr) {
+      console.warn("[customer-detail] PDF upload deferred (offline):", uploadErr.message);
+      return bill;
+    }
   };
 
   const exportPDF = async (bill, currentItems) => {
@@ -107,9 +112,23 @@ export default function CustomerDetailPage() {
         showToast("Opening PDF...");
         return;
       } catch (error) {
-        console.warn("Stored PDF could not be opened; regenerating it.", error);
+        console.warn("Stored PDF could not be opened; trying local cache.", error);
       }
     }
+
+    // Try local IndexedDB cache
+    try {
+      const { getPdfFromCache } = await import("@/lib/local-repo");
+      const cached = await getPdfFromCache(bill.id);
+      if (cached?.blob) {
+        const url = URL.createObjectURL(cached.blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = `INV-${bill.bill_number}.pdf`; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+        showToast("PDF downloaded (offline copy)");
+        return;
+      }
+    } catch { /* continue to regenerate */ }
 
     const cust    = allCustomers.find((c) => c.id === bill.customer_id);
     const vehicle = allVehicles.find((v) => v.id === bill.vehicle_id);

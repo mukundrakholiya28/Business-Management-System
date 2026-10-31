@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Navbar from "@/components/Navbar";
 import { useProtectedRoute } from "@/context/AuthContext";
 import { SectionHeader, StatCard, EmptyState, Modal } from "@/components/ui";
-import { loadWorkers, loadSalaryRecords, saveWorker, saveSalaryRecord } from "@/lib/workshop-data";
+import { loadWorkers, loadSalaryRecords, saveWorker, saveSalaryRecord } from "@/lib/data-layer";
 import {
   formatCurrency,
   formatDate,

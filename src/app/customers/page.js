@@ -5,7 +5,7 @@ import Navbar from "@/components/Navbar";
 import { useProtectedRoute } from "@/context/AuthContext";
 import { EmptyState, Modal, SectionHeader, PageSkeleton, PhoneNumber } from "@/components/ui";
 import { formatDate, getInitials, normalizeSearch, formatVehicleNumber, formatPhoneNumber } from "@/lib/helpers";
-import { loadWorkshopData, saveCustomerWithVehicles, deleteCustomer, updateCustomer } from "@/lib/workshop-data";
+import { loadWorkshopData, saveCustomerWithVehicles, deleteCustomer, updateCustomer } from "@/lib/data-layer";
 import Link from "next/link";
 import { Plus, Search, UserPlus, Users, ChevronRight, Trash2, Pencil } from "lucide-react";
 

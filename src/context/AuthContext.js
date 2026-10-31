@@ -51,6 +51,15 @@ export function AuthProvider({ children }) {
       }
       setUser(data.user);
       setLoading(false);
+
+      // Trigger initial populate after login
+      try {
+        const { initialPopulate } = await import("@/lib/sync-engine");
+        await initialPopulate(data.user.id);
+      } catch (syncErr) {
+        console.warn("[AuthContext] initial sync after login failed:", syncErr.message);
+      }
+
       return { success: true };
     } catch (err) {
       setError(err.message);
@@ -61,6 +70,21 @@ export function AuthProvider({ children }) {
 
   const logout = async () => {
     if (!supabase) return;
+
+    // Warn if there are pending unsynced changes
+    try {
+      const { getPendingCount } = await import("@/lib/local-repo");
+      const pending = await getPendingCount();
+      if (pending > 0) {
+        const confirmed = window.confirm(
+          `You have ${pending} unsynchronised change${pending !== 1 ? "s" : ""} that haven't been uploaded yet.\n\nIf you log out now, these changes will remain stored locally and will sync when you log back in.\n\nProceed with logout?`
+        );
+        if (!confirmed) return;
+      }
+    } catch (e) {
+      // If local-repo isn't available (SSR / first load), proceed with logout
+    }
+
     await supabase.auth.signOut();
     setUser(null);
   };

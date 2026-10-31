@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Navbar from "@/components/Navbar";
 import { useProtectedRoute } from "@/context/AuthContext";
-import { loadProfile, saveProfile } from "@/lib/workshop-data";
+import { loadProfile, saveProfile } from "@/lib/data-layer";
 import { PageSkeleton } from "@/components/ui";
 import { Building2, CreditCard, FileText, Phone, Mail, MapPin, Save } from "lucide-react";
 

@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useSyncExternalStore } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Search, X, ArrowRight } from "lucide-react";
-import { loadWorkshopData } from "@/lib/workshop-data";
+import { loadWorkshopData } from "@/lib/data-layer";
 import { normalizeSearch, formatVehicleNumber, getInitials } from "@/lib/helpers";
 import { createPortal } from "react-dom";
 
