@@ -13,6 +13,7 @@
 import { v4 as uuidv4 } from "uuid";
 import {
   getDb,
+  isIndexedDbAvailable,
   SYNC_STATUS,
   QUEUE_OP,
   QUEUE_STATUS,
@@ -31,7 +32,14 @@ function newId() {
   return uuidv4();
 }
 
-/** Returns all live (non-deleted) rows from a table. */
+/** Throws a clear error when called outside the browser. */
+function requireBrowser() {
+  if (!isIndexedDbAvailable()) {
+    throw new Error("IndexedDB is not available outside the browser.");
+  }
+}
+
+/** Returns all live (non-deleted) rows from a Dexie table. */
 async function liveRows(table) {
   return table.filter((r) => !r.is_deleted).toArray();
 }
@@ -119,6 +127,7 @@ export function isLocalReady() {
 // ─── loadWorkshopData ─────────────────────────────────────────────────────────
 
 export async function loadWorkshopData() {
+  requireBrowser();
   const db = getDb();
 
   const [customers, vehicles, bills, rawBillItems] = await Promise.all([
@@ -148,6 +157,7 @@ export async function loadWorkshopData() {
 
 export async function fetchBillItemsByBillId(billId) {
   if (!billId) return [];
+  requireBrowser();
   const db = getDb();
   const items = await db.bill_items
     .where("bill_id")
