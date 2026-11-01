@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Navbar from "@/components/Navbar";
-import { useProtectedRoute } from "@/context/AuthContext";
+import { useProtectedRoute, useAuth } from "@/context/AuthContext";
 import { loadProfile, saveProfile } from "@/lib/data-layer";
 import { PageSkeleton } from "@/components/ui";
 import { Building2, CreditCard, FileText, Phone, Mail, MapPin, Save } from "lucide-react";
@@ -15,6 +15,7 @@ const SECTIONS = [
 
 export default function ProfilePage() {
   const { user, loading } = useProtectedRoute();
+  const { populateDone }  = useAuth();
   const [profile, setProfile]       = useState(null);
   const [loadingData, setLoadingData] = useState(true);
   const [saving, setSaving]         = useState(false);
@@ -28,7 +29,7 @@ export default function ProfilePage() {
       .then(setProfile)
       .catch((e) => showToast(e.message))
       .finally(() => setLoadingData(false));
-  }, []);
+  }, [populateDone]);
 
   const set = (field, value) => setProfile((p) => ({ ...p, [field]: value }));
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Navbar from "@/components/Navbar";
-import { useProtectedRoute } from "@/context/AuthContext";
+import { useProtectedRoute, useAuth } from "@/context/AuthContext";
 import { EmptyState, Modal, SectionHeader, PageSkeleton, PhoneNumber } from "@/components/ui";
 import { formatDate, getInitials, normalizeSearch, formatVehicleNumber, formatPhoneNumber } from "@/lib/helpers";
 import { loadWorkshopData, saveCustomerWithVehicles, deleteCustomer, updateCustomer } from "@/lib/data-layer";
@@ -15,6 +15,7 @@ function emptyVehicle() {
 
 export default function CustomersPage() {
   const { user, loading } = useProtectedRoute();
+  const { populateDone }  = useAuth();
   const [customers, setCustomers] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [loadingData, setLoadingData] = useState(true);
@@ -44,7 +45,7 @@ export default function CustomersPage() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [populateDone]);
 
   const showToast = (message) => {
     setToast(message);

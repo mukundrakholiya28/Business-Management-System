@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
-import { useProtectedRoute } from "@/context/AuthContext";
+import { useProtectedRoute, useAuth } from "@/context/AuthContext";
 import { StatusSelect, EmptyState, Modal, PageSkeleton, PhoneNumber } from "@/components/ui";
 import { formatCurrency, formatDate, getInitials, generateId, formatPhoneNumber, getLocalDateString, formatVehicleNumber } from "@/lib/helpers";
 import { loadWorkshopData, saveBillWithItems, deleteVehicle, deleteBill, updateCustomer, saveVehicle, fetchBillItemsByBillId } from "@/lib/data-layer";
@@ -20,6 +20,7 @@ export default function CustomerDetailPage() {
   const { id } = useParams();
   const router = useRouter();
   const { user, loading } = useProtectedRoute();
+  const { populateDone }  = useAuth();
 
   const [customer, setCustomer]     = useState(null);
   const [vehicles, setVehicles]     = useState([]);
@@ -63,7 +64,7 @@ export default function CustomerDetailPage() {
       })
       .finally(() => { if (mounted) setLoadingData(false); });
     return () => { mounted = false; };
-  }, [id]);
+  }, [id, populateDone]);
 
   // Group bills by vehicle
   const billsByVehicle = useMemo(() => {

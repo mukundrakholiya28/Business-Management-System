@@ -9,6 +9,7 @@ import { formatCurrency, formatVehicleNumber, formatDate } from "@/lib/helpers";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { loadWorkshopData, saveBillWithItems } from "@/lib/data-layer";
+import { useAuth } from "@/context/AuthContext";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -53,6 +54,7 @@ function invoiceStats(bills) {
 
 export default function DashboardPage() {
   const { user, loading } = useProtectedRoute();
+  const { populateDone }  = useAuth();
   const router = useRouter();
   const [customers, setCustomers] = useState([]);
   const [vehicles, setVehicles]   = useState([]);
@@ -72,7 +74,7 @@ export default function DashboardPage() {
       .catch((err) => { if (mounted) setError(err.message); })
       .finally(() => { if (mounted) setLoadingData(false); });
     return () => { mounted = false; };
-  }, []);
+  }, [populateDone]); // re-run when background populate finishes
 
   // ── Computed stats ──────────────────────────────────────────────────────────
   const allTimeRevenue = totalRevenue(bills);

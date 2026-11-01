@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Navbar from "@/components/Navbar";
-import { useProtectedRoute } from "@/context/AuthContext";
+import { useProtectedRoute, useAuth } from "@/context/AuthContext";
 import { SectionHeader, StatCard, EmptyState, Modal } from "@/components/ui";
 import { loadWorkers, loadSalaryRecords, saveWorker, saveSalaryRecord } from "@/lib/data-layer";
 import {
@@ -30,6 +30,7 @@ import {
 
 export default function WorkersPage() {
   const { user, loading } = useProtectedRoute();
+  const { populateDone }  = useAuth();
   const [workers, setWorkers] = useState([]);
   const [salaryRecords, setSalaryRecords] = useState([]);
   const [loadingData, setLoadingData] = useState(true);
@@ -54,7 +55,7 @@ export default function WorkersPage() {
       .catch((err) => { if (mounted) showToast(err.message); })
       .finally(() => { if (mounted) setLoadingData(false); });
     return () => { mounted = false; };
-  }, []);
+  }, [populateDone]);
 
   if (loading || !user || loadingData) {
     return (

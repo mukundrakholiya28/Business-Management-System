@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Navbar from "@/components/Navbar";
-import { useProtectedRoute } from "@/context/AuthContext";
+import { useProtectedRoute, useAuth } from "@/context/AuthContext";
 import { SectionHeader, StatusBadge, StatusDot, EmptyState, Modal, StatusSelect, PageSkeleton, PhoneNumber } from "@/components/ui";
 import {
   formatCurrency,
@@ -93,6 +93,7 @@ function billMatchesTimeFilter(bill, filter, customRange) {
 
 function BillingPage() {
   const { user, loading } = useProtectedRoute();
+  const { populateDone }  = useAuth();
   const searchParams = useSearchParams();
   const [bills, setBills] = useState([]);
   const [billItems, setBillItems] = useState([]);
@@ -136,7 +137,7 @@ function BillingPage() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [populateDone]);
 
   // Auto-open bill from URL param (e.g. navigating from dashboard)
   useEffect(() => {
