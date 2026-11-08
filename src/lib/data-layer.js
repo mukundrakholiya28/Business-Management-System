@@ -1,4 +1,4 @@
-/**
+﻿/**
  * data-layer.js — Unified data access layer
  * ─────────────────────────────────────────────────────────────────────────────
  * Rules:
@@ -15,6 +15,19 @@
  */
 
 import { supabase } from "./supabase";
+
+// ─── In-memory read cache ─────────────────────────────────────────────────────
+// Prevents multiple simultaneous loadWorkshopData() calls (e.g. Navbar + Page)
+// from each doing a full IndexedDB scan. Cache TTL: 2 seconds.
+let _cachedData    = null;
+let _cacheTime     = 0;
+let _inflight      = null;
+const CACHE_TTL_MS = 2000;
+
+function invalidateCache() {
+  _cachedData = null;
+  _cacheTime  = 0;
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -56,21 +69,37 @@ async function isLocalPopulated() {
 // ─── loadWorkshopData ─────────────────────────────────────────────────────────
 
 export async function loadWorkshopData() {
-  // Not in browser (SSR) → go straight to Supabase
+  // SSR → Supabase
   if (!isBrowser()) {
     const { loadWorkshopData: cloudLoad } = await import("./workshop-data");
     return cloudLoad();
   }
 
-  // In browser — try local first
-  try {
-    const { loadWorkshopData: localLoad } = await import("./local-repo");
-    return await localLoad();
-  } catch (err) {
-    console.warn("[data-layer] local read failed, falling back to Supabase:", err.message);
-    const { loadWorkshopData: cloudLoad } = await import("./workshop-data");
-    return cloudLoad();
+  // Return cache if fresh
+  if (_cachedData && Date.now() - _cacheTime < CACHE_TTL_MS) {
+    return _cachedData;
   }
+
+  // Coalesce concurrent calls — only one IndexedDB read at a time
+  if (_inflight) return _inflight;
+
+  _inflight = (async () => {
+    try {
+      const { loadWorkshopData: localLoad } = await import("./local-repo");
+      const data = await localLoad();
+      _cachedData = data;
+      _cacheTime  = Date.now();
+      return data;
+    } catch (err) {
+      console.warn("[data-layer] local read failed, falling back to Supabase:", err.message);
+      const { loadWorkshopData: cloudLoad } = await import("./workshop-data");
+      return cloudLoad();
+    } finally {
+      _inflight = null;
+    }
+  })();
+
+  return _inflight;
 }
 
 export async function fetchBillItemsByBillId(billId) {
@@ -133,6 +162,7 @@ async function _storeCloudDataLocally(data, userId) {
   await storeTable("vehicles",         data.vehicles   || []);
   await storeTable("bills",            data.bills      || []);
   await storeTable("bill_items",       data.billItems  || []);
+  invalidateCache(); // fresh data from cloud — bust the read cache
 }
 
 // ─── Customers ────────────────────────────────────────────────────────────────
@@ -145,7 +175,7 @@ export async function saveCustomerWithVehicles({ customer, vehicles }) {
   }
   const { saveCustomerWithVehicles: localSave } = await import("./local-repo");
   const result = await localSave({ customer, vehicles, userId });
-  _triggerSync();
+  invalidateCache(); _triggerSync();
   return result;
 }
 
@@ -156,7 +186,7 @@ export async function updateCustomer(customer) {
   }
   const { updateCustomer: localUpdate } = await import("./local-repo");
   const result = await localUpdate(customer);
-  _triggerSync();
+  invalidateCache(); _triggerSync();
   return result;
 }
 
@@ -170,7 +200,7 @@ export async function saveVehicle(vehicle, isEditing) {
   }
   const { saveVehicle: localSave } = await import("./local-repo");
   const result = await localSave(vehicle, isEditing, userId);
-  _triggerSync();
+  invalidateCache(); _triggerSync();
   return result;
 }
 
@@ -184,7 +214,7 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
   }
   const { saveBillWithItems: localSave } = await import("./local-repo");
   const result = await localSave({ bill, items, isEditing, userId });
-  _triggerSync();
+  invalidateCache(); _triggerSync();
   return result;
 }
 
@@ -195,7 +225,7 @@ export async function deleteBill(billId) {
   }
   const { deleteBill: localDel } = await import("./local-repo");
   await localDel(billId);
-  _triggerSync();
+  invalidateCache(); _triggerSync();
 }
 
 export async function deleteCustomer(customerId) {
@@ -205,7 +235,7 @@ export async function deleteCustomer(customerId) {
   }
   const { deleteCustomer: localDel } = await import("./local-repo");
   await localDel(customerId);
-  _triggerSync();
+  invalidateCache(); _triggerSync();
 }
 
 export async function deleteVehicle(vehicleId) {
@@ -215,7 +245,7 @@ export async function deleteVehicle(vehicleId) {
   }
   const { deleteVehicle: localDel } = await import("./local-repo");
   await localDel(vehicleId);
-  _triggerSync();
+  invalidateCache(); _triggerSync();
 }
 
 // ─── Profile ─────────────────────────────────────────────────────────────────
@@ -243,7 +273,7 @@ export async function saveProfile(profile) {
   }
   const { saveProfile: localSave } = await import("./local-repo");
   const result = await localSave(profile, userId || "");
-  _triggerSync();
+  invalidateCache(); _triggerSync();
   return result;
 }
 
@@ -270,7 +300,7 @@ export async function saveWorker(worker) {
   }
   const { saveWorker: localSave } = await import("./local-repo");
   const result = await localSave(worker);
-  _triggerSync();
+  invalidateCache(); _triggerSync();
   return result;
 }
 
@@ -297,7 +327,7 @@ export async function saveSalaryRecord(record) {
   }
   const { saveSalaryRecord: localSave } = await import("./local-repo");
   const result = await localSave(record);
-  _triggerSync();
+  invalidateCache(); _triggerSync();
   return result;
 }
 

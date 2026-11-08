@@ -1,36 +1,155 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# Shree Royal Car — Workshop & Business Management System (BMS)
 
-## Getting Started
+> A modern, full-featured automotive workshop management system built with Next.js 16, Tailwind CSS, Supabase, and an offline-first local database architecture.
 
-First, run the development server:
+---
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## 🌟 The Two-Part Architecture
+
+This repository powers **two integrated experiences** from a single, unified codebase:
+
+| Part | Component | Description | Tech Stack |
+|---|---|---|---|
+| **Part 1** | **Web Application (Cloud Portal)** | The central online portal for garage managers and owners to access and manage workshop operations from anywhere. | Next.js 16 App Router, Supabase Auth, PostgreSQL (RLS), Vercel |
+| **Part 2** | **Offline-Compatible Desktop App** | A resilient desktop application engineered for garage environments where internet can be intermittent or offline. | Dexie (IndexedDB), Bi-directional Sync Engine, PWA / Desktop Wrapper |
+
+👉 **Read the full architectural breakdown in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).**
+
+---
+
+## 🚀 Key Features
+
+- **🧾 Smart Invoicing & Billing**:
+  - Instant invoice creation with customer auto-suggest, vehicle selector, and line item calculations.
+  - Multi-page A4 PDF rendering with custom typography and brand headers.
+  - Offline-first invoice generation with local fallback templates.
+  - Direct WhatsApp and Email sharing.
+- **👥 Customer & Fleet Tracking**:
+  - Customer profiles, multi-vehicle linkages, complete service visit history, and total revenue tracking.
+- **📊 Financial Analytics**:
+  - Real-time revenue analytics, period filtering (Today, 7D, 30D, Custom Range), GST breakdown, and Recharts visualization.
+- **👷 Worker Payroll & Attendance**:
+  - Worker directory, salary logs, advance payment tracking, and balance management.
+- **🔄 Seamless Offline Sync**:
+  - Automatic IndexedDB storage on every write with zero UI lag.
+  - Background sync engine with conflict resolution and connectivity watcher.
+  - Service Worker precaching Next.js application shells and static bundles.
+
+---
+
+## 📁 Repository Directory Structure
+
+```text
+Business-Management-System/
+├── src/
+│   ├── app/                    # Next.js 16 App Router pages & API routes
+│   │   ├── (dashboard)         # Dashboard overview (src/app/page.js)
+│   │   ├── billing/            # Invoices & billing module
+│   │   ├── customers/          # Customer & vehicle management
+│   │   ├── finance/            # Revenue analytics & charts
+│   │   ├── workers/            # Payroll & staff directory
+│   │   ├── profile/            # Workshop profile & bank settings
+│   │   ├── login/              # Authentication & password reset
+│   │   └── api/                # Cloud endpoints:
+│   │       ├── generate-invoice/  # Server-side PDF invoice rendering
+│   │       ├── send-email/        # Resend / SMTP email delivery
+│   │       ├── whatsapp-webhook/  # Meta WhatsApp webhook receiver
+│   │       └── health/            # System health check
+│   ├── components/             # Reusable UI components & layouts
+│   ├── context/                # React Contexts (AuthContext, SyncContext)
+│   ├── hooks/                  # Custom React hooks (useReconnectReload, etc.)
+│   ├── lib/                    # Core business logic & services:
+│   │   ├── data-layer.js       # Unified data access (offline-first switch)
+│   │   ├── local-db.js         # IndexedDB schema & Dexie tables
+│   │   ├── local-repo.js       # Local CRUD operations
+│   │   ├── sync-engine.js      # Bi-directional cloud sync engine
+│   │   ├── supabase.js         # Supabase client & authentication
+│   │   ├── pdf.js              # Offline-safe PDF generator
+│   │   └── helpers.js          # Currency, phone, date formatters
+│   └── templates/
+│       └── invoice/            # Branded EJS template, CSS, and sample data
+├── public/                     # Static assets (logo, favicon, sw.js, offline fonts)
+├── supabase/                   # PostgreSQL migrations, schema, and RPC scripts
+├── docs/                       # Guides, deployment checklists, and architecture docs
+└── scripts/                    # Build scripts (e.g. generate-sw-precache.mjs)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+## 🛠️ Getting Started
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 1. Prerequisites
+- **Node.js**: v18.18 or higher (v20+ recommended)
+- **Package Manager**: npm, pnpm, or yarn
+- **Supabase Account**: A Supabase project with database configured (see [supabase/schema.sql](supabase/schema.sql))
 
-## Learn More
+### 2. Installation
+```bash
+# Clone the repository
+git clone https://github.com/your-username/Business-Management-System.git
+cd Business-Management-System
 
-To learn more about Next.js, take a look at the following resources:
+# Install dependencies
+npm install
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### 3. Environment Configuration
+Copy the template and fill in your Supabase credentials:
+```bash
+cp .env.example .env
+```
+Edit `.env` with your actual project keys:
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+*(See [.env.example](.env.example) for optional SMTP and WhatsApp variables)*
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### 4. Database Setup
+1. Open your Supabase project's **SQL Editor**.
+2. Run `supabase/schema.sql` to initialize tables.
+3. Run `supabase/rls-migration.sql` to enforce Row Level Security.
+4. Run `supabase/create_save_bill_rpc.sql` for atomic bill transactions.
 
-## Deploy on Vercel
+### 5. Running Development Server
+```bash
+npm run dev
+```
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 💻 Running as an Offline Desktop App
+
+### PWA Desktop Installation (Recommended)
+1. Open the application in **Google Chrome**, **Microsoft Edge**, or **Brave**.
+2. Click the **Install** icon in the browser address bar (or go to Menu > **Install Shree Royal Car**).
+3. The app will launch in a clean, standalone desktop window with its own taskbar icon and offline cache enabled.
+
+---
+
+## 📚 Documentation Index
+
+Detailed guides are located in the [`docs/`](docs/) directory:
+
+- 🏛️ [System Architecture](docs/ARCHITECTURE.md) — Two-part web & desktop design.
+- 🎯 [Setup Summary](docs/SETUP-SUMMARY.md) — Comprehensive overview of modules and database.
+- 🔐 [RLS Security Guide](docs/RLS-SETUP.md) — Multi-tenant data isolation and security policies.
+- 🛡️ [RLS Setup Verification](docs/RLS-SETUP-COMPLETE.md) — RLS deployment verification steps.
+- 🚀 [Deployment Checklist](docs/DEPLOYMENT-CHECKLIST.md) — Production deployment instructions (Vercel).
+- 🎨 [Design System & Tokens](docs/DESIGN-SYSTEM-NEUMORPHIC.md) — Soft UI / Neumorphic styling tokens.
+- 🔔 [Webhook Setup Guide](docs/WEBHOOK-SETUP.md) — WhatsApp notification webhooks.
+
+---
+
+## 📜 Available Scripts
+
+| Command | Description |
+|---|---|
+| `npm run dev` | Runs the Next.js development server with Turbopack |
+| `npm run build` | Builds the production Next.js app and generates SW precache list |
+| `npm run start` | Starts the production Next.js server |
+| `npm run lint` | Runs ESLint checks |
+
+---
+
+## 📄 License
+Private & Proprietary — Shree Royal Car. All rights reserved.

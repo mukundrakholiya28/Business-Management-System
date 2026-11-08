@@ -11,6 +11,7 @@
  */
 
 import { v4 as uuidv4 } from "uuid";
+import Dexie from "dexie";
 import {
   getDb,
   isIndexedDbAvailable,
@@ -41,7 +42,8 @@ function requireBrowser() {
 
 /** Returns all live (non-deleted) rows from a Dexie table. */
 async function liveRows(table) {
-  return table.filter((r) => !r.is_deleted).toArray();
+  // Use the indexed is_deleted=0 path instead of a full-table filter scan
+  return table.where("is_deleted").equals(0).toArray();
 }
 
 // ─── Sync queue ───────────────────────────────────────────────────────────────
@@ -130,26 +132,26 @@ export async function loadWorkshopData() {
   requireBrowser();
   const db = getDb();
 
+  // All four queries run in parallel using indexed is_deleted=0
   const [customers, vehicles, bills, rawBillItems] = await Promise.all([
-    liveRows(db.customers),
-    liveRows(db.vehicles),
-    liveRows(db.bills),
-    liveRows(db.bill_items),
+    db.customers.where("is_deleted").equals(0).toArray(),
+    db.vehicles.where("is_deleted").equals(0).toArray(),
+    db.bills.where("is_deleted").equals(0).toArray(),
+    db.bill_items.where("is_deleted").equals(0).toArray(),
   ]);
 
-  const sortedBills = [...bills].sort(
-    (a, b) => (b.bill_number ?? 0) - (a.bill_number ?? 0)
-  );
-  const billItems = [...rawBillItems].sort(
-    (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
-  );
+  // Sort bills DESC by bill_number (most recent first)
+  bills.sort((a, b) => (b.bill_number ?? 0) - (a.bill_number ?? 0));
+
+  // Sort items by sort_order within each bill
+  rawBillItems.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
 
   return {
     source:    "local",
-    customers: customers || [],
-    vehicles:  vehicles  || [],
-    bills:     sortedBills || [],
-    billItems: billItems || [],
+    customers,
+    vehicles,
+    bills,
+    billItems: rawBillItems,
   };
 }
 
@@ -159,11 +161,19 @@ export async function fetchBillItemsByBillId(billId) {
   if (!billId) return [];
   requireBrowser();
   const db = getDb();
+  // Use compound index [bill_id, sort_order] for fast sorted retrieval
   const items = await db.bill_items
-    .where("bill_id")
-    .equals(billId)
+    .where("[bill_id+sort_order]")
+    .between([billId, Dexie.minKey], [billId, Dexie.maxKey])
     .filter((i) => !i.is_deleted)
-    .toArray();
+    .toArray()
+    .catch(() =>
+      // Fallback if compound index not available
+      db.bill_items
+        .where("bill_id").equals(billId)
+        .filter((i) => !i.is_deleted)
+        .toArray()
+    );
   return items.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
 }
 
@@ -462,13 +472,16 @@ export async function saveBillWithItems({ bill, items, isEditing, userId }) {
   }
 
   // ── Assign local bill_number ──────────────────────────────────────────────
+  // Use an index query on user_id instead of full table scan
   let bill_number = bill.bill_number;
   if (!isEditing || !bill_number) {
-    const allBills = await db.bills
-      .filter((b) => b.user_id === userId && !b.is_deleted)
-      .toArray();
-    const maxNum = allBills.reduce((m, b) => Math.max(m, b.bill_number ?? 0), 0);
-    bill_number  = maxNum + 1;
+    // Get just the bill_number column for this user, sorted DESC — much faster
+    const topBill = await db.bills
+      .where("user_id").equals(userId || "")
+      .filter((b) => !b.is_deleted)
+      .toArray()
+      .then((rows) => rows.reduce((max, b) => Math.max(max, b.bill_number ?? 0), 0));
+    bill_number = topBill + 1;
   }
 
   const billId = isEditing ? bill.id : (bill.id || newId());
@@ -686,7 +699,7 @@ export async function deleteBill(billId) {
 
 export async function loadWorkers() {
   const db      = getDb();
-  const workers = await liveRows(db.workers);
+  const workers = await db.workers.where("is_deleted").equals(0).toArray();
   return workers.sort((a, b) => new Date(b.joined_at || 0) - new Date(a.joined_at || 0));
 }
 
@@ -722,7 +735,8 @@ export async function saveWorker(worker) {
 
 export async function loadSalaryRecords() {
   const db      = getDb();
-  const records = await liveRows(db.salary_records);
+  // salary_records has no is_deleted — filter all, sort by date
+  const records = await db.salary_records.toArray();
   return records.sort((a, b) => new Date(b.date_paid || 0) - new Date(a.date_paid || 0));
 }
 

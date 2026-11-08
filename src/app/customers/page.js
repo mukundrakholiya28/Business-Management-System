@@ -1,8 +1,9 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import Navbar from "@/components/Navbar";
 import { useProtectedRoute, useAuth } from "@/context/AuthContext";
+import { useReconnectReload } from "@/hooks/useReconnectReload";
 import { EmptyState, Modal, SectionHeader, PageSkeleton, PhoneNumber } from "@/components/ui";
 import { formatDate, getInitials, normalizeSearch, formatVehicleNumber, formatPhoneNumber } from "@/lib/helpers";
 import { loadWorkshopData, saveCustomerWithVehicles, deleteCustomer, updateCustomer } from "@/lib/data-layer";
@@ -46,6 +47,15 @@ export default function CustomersPage() {
       mounted = false;
     };
   }, [populateDone]);
+
+  // Auto-reload when internet reconnects
+  useReconnectReload(() => {
+    let m = true;
+    loadWorkshopData()
+      .then((d) => { if (m) { setCustomers(d.customers || []); setVehicles(d.vehicles || []); } })
+      .catch(() => {});
+    return () => { m = false; };
+  });
 
   const showToast = (message) => {
     setToast(message);

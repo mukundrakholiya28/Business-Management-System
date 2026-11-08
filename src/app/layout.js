@@ -21,10 +21,11 @@ export const metadata = {
     "Business Management System for Shree Royal Car workshop. Manage customers, vehicles, billing, and worker payroll.",
   icons: {
     icon: [
-      { url: "/favicon.ico", sizes: "any" },
-      { url: "/logo.png", type: "image/png" }
+      { url: "/logo.png",    type: "image/png", sizes: "any" },
+      { url: "/favicon.ico", sizes: "any"       },
     ],
-    apple: "/logo.png",
+    apple:   "/logo.png",
+    shortcut: "/logo.png",
   },
 };
 

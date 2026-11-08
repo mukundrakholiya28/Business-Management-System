@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
@@ -7,6 +7,7 @@ import { useProtectedRoute, useAuth } from "@/context/AuthContext";
 import { PageSkeleton } from "@/components/ui";
 import { formatCurrency, formatDate } from "@/lib/helpers";
 import { loadWorkshopData } from "@/lib/data-layer";
+import { useReconnectReload } from "@/hooks/useReconnectReload";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
@@ -181,6 +182,15 @@ export default function FinancePage() {
       .finally(() => { if (mounted) setLoadingData(false); });
     return () => { mounted = false; };
   }, [populateDone]);
+
+  // Auto-reload when internet reconnects
+  useReconnectReload(() => {
+    let m = true;
+    loadWorkshopData()
+      .then((data) => { if (m) { setBills(data.bills || []); setCustomers(data.customers || []); } })
+      .finally(() => { if (m) setLoadingData(false); });
+    return () => { m = false; };
+  });
 
   const filtered    = useMemo(() => filterBills(bills, period, customRange), [bills, period, customRange]);
   const stats       = useMemo(() => calcStats(filtered), [filtered]);

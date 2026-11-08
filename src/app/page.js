@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import Navbar from "@/components/Navbar";
 import { useProtectedRoute } from "@/context/AuthContext";
 import { ArrowUpRight, Car, TrendingUp } from "lucide-react";
@@ -10,6 +10,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { loadWorkshopData, saveBillWithItems } from "@/lib/data-layer";
 import { useAuth } from "@/context/AuthContext";
+import { useReconnectReload } from "@/hooks/useReconnectReload";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -62,8 +63,9 @@ export default function DashboardPage() {
   const [loadingData, setLoadingData] = useState(true);
   const [error, setError]         = useState(null);
 
-  useEffect(() => {
+  const fetchData = useCallback(() => {
     let mounted = true;
+    setLoadingData(true);
     loadWorkshopData()
       .then((data) => {
         if (!mounted) return;
@@ -74,7 +76,11 @@ export default function DashboardPage() {
       .catch((err) => { if (mounted) setError(err.message); })
       .finally(() => { if (mounted) setLoadingData(false); });
     return () => { mounted = false; };
-  }, [populateDone]); // re-run when background populate finishes
+  }, []);
+
+  useEffect(() => fetchData(), [populateDone]);
+  // Auto-reload data when internet reconnects
+  useReconnectReload(fetchData);
 
   // ── Computed stats ──────────────────────────────────────────────────────────
   const allTimeRevenue = totalRevenue(bills);

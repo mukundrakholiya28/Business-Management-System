@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useState, useRef, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
@@ -30,6 +30,7 @@ import {
   saveVehicle,
   fetchBillItemsByBillId,
 } from "@/lib/data-layer";
+import { useReconnectReload } from "@/hooks/useReconnectReload";
 import {
   Plus,
   FileText,
@@ -138,6 +139,16 @@ function BillingPage() {
       mounted = false;
     };
   }, [populateDone]);
+
+  // Auto-reload when internet reconnects
+  useReconnectReload(() => {
+    loadWorkshopData().then((d) => {
+      setCustomers(d.customers || []);
+      setVehicles(d.vehicles   || []);
+      setBills(d.bills         || []);
+      setBillItems(d.billItems || []);
+    }).catch(() => {});
+  });
 
   // Auto-open bill from URL param (e.g. navigating from dashboard)
   useEffect(() => {

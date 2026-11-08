@@ -21,10 +21,11 @@ export const runtime = "nodejs";
 
 // ── Paths ─────────────────────────────────────────────────────────────────────
 
-const FONTS_DIR    = path.join(process.cwd(), "public", "fonts");
-const TEMPLATE_PATH = path.join(process.cwd(), "shree-royal-invoice", "views", "invoice.ejs");
-const LOGO_PATH    = path.join(process.cwd(), "public", "logo.png");
-const SRC_CSS_PATH = path.join(process.cwd(), "shree-royal-invoice", "public", "css", "invoice.css");
+const FONTS_DIR     = path.join(process.cwd(), "public", "fonts");
+const TEMPLATE_PATH = path.join(process.cwd(), "src", "templates", "invoice", "invoice.ejs");
+const LOGO_PATH     = path.join(process.cwd(), "public", "logo.png");
+const SRC_CSS_PATH  = path.join(process.cwd(), "src", "templates", "invoice", "invoice.css");
+const SAMPLE_PATH   = path.join(process.cwd(), "src", "templates", "invoice", "sample-invoice.json");
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -250,12 +251,7 @@ async function renderInvoiceHtml(templateData) {
 
 export async function GET() {
   try {
-    const sample = JSON.parse(
-      fs.readFileSync(
-        path.join(process.cwd(), "shree-royal-invoice", "data", "sample-invoice.json"),
-        "utf-8"
-      )
-    );
+    const sample = JSON.parse(fs.readFileSync(SAMPLE_PATH, "utf-8"));
 
     // Wrap sample data in the same shape buildTemplateData expects
     const templateData = {

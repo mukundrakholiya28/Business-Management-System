@@ -51,14 +51,15 @@ Step-by-step checklist for deploying to production and verifying everything work
 ### 🔔 [Webhook Setup Guide](WEBHOOK-SETUP.md)
 Instructions for configuring Supabase webhooks to send automatic notifications.
 
-**Contents:**
-- What webhooks do
-- Supabase dashboard configuration
-- Webhook endpoint setup
-- Security and authentication
-- Testing and troubleshooting
+---
 
-**When to read:** When you want automatic WhatsApp notifications for new invoices
+### 🎨 [Neumorphic Design System](DESIGN-SYSTEM-NEUMORPHIC.md)
+Tailwind CSS utility tokens, shadow definitions, color palette, and component design patterns.
+
+---
+
+### 🛡️ [RLS Setup Verification](RLS-SETUP-COMPLETE.md)
+Summary of the Row Level Security implementation, tables protected, and verification steps.
 
 ---
 

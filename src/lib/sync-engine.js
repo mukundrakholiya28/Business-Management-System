@@ -575,6 +575,9 @@ export async function initialPopulate(userId) {
 
 let reconnectTimer = null;
 
+// Broadcast channel so all tabs/components know when we reconnected
+const RECONNECT_EVENT = "src-bms:reconnected";
+
 export function startConnectivityWatcher() {
   if (typeof window === "undefined") return;
 
@@ -584,8 +587,10 @@ export function startConnectivityWatcher() {
       const online = await probeConnectivity();
       if (online) {
         await runSync();
+        // Notify all listeners that we've reconnected so they can reload data
+        window.dispatchEvent(new CustomEvent(RECONNECT_EVENT));
       }
-    }, 1500);  // debounce by 1.5 s
+    }, 1500);
   }
 
   async function handleOffline() {
@@ -595,11 +600,8 @@ export function startConnectivityWatcher() {
   window.addEventListener("online",  handleOnline);
   window.addEventListener("offline", handleOffline);
 
-  // Also sync when the tab becomes visible again
   document.addEventListener("visibilitychange", async () => {
-    if (!document.hidden) {
-      await runSync();
-    }
+    if (!document.hidden) await runSync();
   });
 
   return () => {

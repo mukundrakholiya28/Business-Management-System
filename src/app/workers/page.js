@@ -1,10 +1,11 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect } from "react";
 import Navbar from "@/components/Navbar";
 import { useProtectedRoute, useAuth } from "@/context/AuthContext";
 import { SectionHeader, StatCard, EmptyState, Modal } from "@/components/ui";
 import { loadWorkers, loadSalaryRecords, saveWorker, saveSalaryRecord } from "@/lib/data-layer";
+import { useReconnectReload } from "@/hooks/useReconnectReload";
 import {
   formatCurrency,
   formatDate,
@@ -56,6 +57,13 @@ export default function WorkersPage() {
       .finally(() => { if (mounted) setLoadingData(false); });
     return () => { mounted = false; };
   }, [populateDone]);
+
+  // Auto-reload when internet reconnects
+  useReconnectReload(() => {
+    Promise.all([loadWorkers(), loadSalaryRecords()])
+      .then(([w, s]) => { setWorkers(w); setSalaryRecords(s); })
+      .catch(() => {});
+  });
 
   if (loading || !user || loadingData) {
     return (
