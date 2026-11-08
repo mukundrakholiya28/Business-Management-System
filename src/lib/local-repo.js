@@ -765,25 +765,7 @@ export async function saveSalaryRecord(record) {
   return row;
 }
 
-// ─── PDF cache ────────────────────────────────────────────────────────────────
 
-export async function storePdfLocally(bill, pdfBlob) {
-  if (!bill?.id || !pdfBlob) return;
-  const db = getDb();
-  await db.pdf_cache.put({
-    bill_id:     bill.id,
-    blob:        pdfBlob,
-    bill_number: bill.bill_number,
-    sync_status: "pending_upload",
-    updated_at:  now(),
-  });
-}
-
-export async function getPdfFromCache(billId) {
-  if (!billId) return null;
-  const db = getDb();
-  return await db.pdf_cache.get(billId);
-}
 
 // ─── Sync queue helpers (used by sync engine) ─────────────────────────────────
 
@@ -871,7 +853,7 @@ export async function wipeUserData(userId) {
     "rw",
     db.customers, db.vehicles, db.bills, db.bill_items,
     db.workers, db.salary_records, db.business_profile,
-    db.sync_queue, db.sync_checkpoint, db.pdf_cache, db.app_settings,
+    db.sync_queue, db.sync_checkpoint, db.app_settings,
     async () => {
       if (userId) {
         await db.customers.where("user_id").equals(userId).delete();
@@ -882,7 +864,6 @@ export async function wipeUserData(userId) {
       }
       await db.sync_queue.clear();
       await db.sync_checkpoint.clear();
-      await db.pdf_cache.clear();
     }
   );
 }

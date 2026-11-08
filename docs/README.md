@@ -48,11 +48,6 @@ Step-by-step checklist for deploying to production and verifying everything work
 
 ---
 
-### 🔔 [Webhook Setup Guide](WEBHOOK-SETUP.md)
-Instructions for configuring Supabase webhooks to send automatic notifications.
-
----
-
 ### 🎨 [Neumorphic Design System](DESIGN-SYSTEM-NEUMORPHIC.md)
 Tailwind CSS utility tokens, shadow definitions, color palette, and component design patterns.
 
@@ -69,7 +64,6 @@ Summary of the Row Level Security implementation, tables protected, and verifica
 1. Read [Setup Summary](SETUP-SUMMARY.md) — Understand what's been built
 2. Read [RLS Setup Guide](RLS-SETUP.md) — Secure your database
 3. Follow [Deployment Checklist](DEPLOYMENT-CHECKLIST.md) — Deploy to production
-4. (Optional) Read [Webhook Setup Guide](WEBHOOK-SETUP.md) — Enable notifications
 
 ### Daily Development
 - Reference [Setup Summary](SETUP-SUMMARY.md) for quick commands
@@ -94,7 +88,6 @@ Summary of the Row Level Security implementation, tables protected, and verifica
 1. **Database Setup** → Follow [RLS Setup Guide](RLS-SETUP.md)
 2. **Deploy Application** → Use [Deployment Checklist](DEPLOYMENT-CHECKLIST.md)
 3. **Configure Monitoring** → Review performance sections
-4. **Setup Notifications** → Optional [Webhook Setup Guide](WEBHOOK-SETUP.md)
 
 ### For Business Users
 - **Setup Summary** provides a high-level overview
@@ -114,7 +107,6 @@ Summary of the Row Level Security implementation, tables protected, and verifica
 - [Data Layer](../src/lib/workshop-data.js) — All database operations
 - [Dashboard](../src/app/page.js) — Main application page
 - [Billing](../src/app/billing/page.js) — Invoice management
-- [Invoice Generator](../src/app/api/generate-invoice/route.js) — PDF generation
 
 ---
 
@@ -128,10 +120,7 @@ Summary of the Row Level Security implementation, tables protected, and verifica
 ### Common Questions
 
 **Q: How do I add a new feature?**  
-A: Start by understanding the data layer in `workshop-data.js`, then add UI in the appropriate page under `src/app/`
-
-**Q: How do I change the invoice design?**  
-A: Edit `src/app/api/generate-invoice/route.js` — the PDF template is inline HTML
+A: Start by understanding the data layer in `data-layer.js`, then add UI in the appropriate page under `src/app/`
 
 **Q: How do I add a new database table?**  
 A: 1) Update `supabase/schema.sql`, 2) Run migration, 3) Add RLS policy, 4) Update `workshop-data.js`

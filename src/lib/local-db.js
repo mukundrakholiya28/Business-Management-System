@@ -37,6 +37,11 @@ export function getDb() {
     app_settings:     "&key",
   });
 
+  // Version 3: drops pdf_cache
+  db.version(3).stores({
+    pdf_cache: null,
+  });
+
   _db = db;
   return db;
 }

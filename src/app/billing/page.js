@@ -14,14 +14,6 @@ import {
   formatVehicleNumber,
   formatPhoneNumber,
 } from "@/lib/helpers";
-import { sendWhatsApp } from "@/lib/whatsapp";
-import { exportInvoicePDF, generateInvoicePDF } from "@/lib/pdf";
-import {
-  createInvoiceDownloadUrl,
-  createInvoiceEmailUrl,
-  downloadInvoicePdf,
-  uploadInvoicePdf,
-} from "@/lib/invoice-storage";
 import {
   loadWorkshopData,
   saveBillWithItems,
@@ -34,8 +26,6 @@ import { useReconnectReload } from "@/hooks/useReconnectReload";
 import {
   Plus,
   FileText,
-  Download,
-  Send,
   Trash2,
   Car,
   Receipt,
@@ -208,191 +198,7 @@ function BillingPage() {
     setShowBillForm(true);
   };
 
-  const persistInvoicePdf = async (bill, pdfBlob) => {
-    // If online, upload to Supabase Storage immediately
-    try {
-      const storagePath = await uploadInvoicePdf(bill, pdfBlob);
-      const saved = await saveBillWithItems({
-        bill: { ...bill, pdf_url: storagePath },
-        items: undefined,
-        isEditing: true,
-      });
-      return saved.bill;
-    } catch (uploadErr) {
-      // Offline or upload failed — PDF is already cached locally by generateInvoicePDF
-      // The sync engine will upload it when connectivity is restored
-      console.warn("[billing] PDF upload deferred (offline):", uploadErr.message);
-      return bill;
-    }
-  };
 
-  const exportPDF = async (bill, currentItems) => {
-    // 1. Try opening a stored cloud PDF (signed URL)
-    if (bill.pdf_url) {
-      try {
-        const signedUrl = await createInvoiceDownloadUrl(bill.pdf_url);
-        window.open(signedUrl, "_blank", "noopener,noreferrer");
-        showToast("Opening PDF...");
-        return;
-      } catch (error) {
-        console.warn("Stored PDF could not be opened; trying local cache.", error);
-      }
-    }
-
-    // 2. Try serving from local IndexedDB cache
-    try {
-      const { getPdfFromCache } = await import("@/lib/local-repo");
-      const cached = await getPdfFromCache(bill.id);
-      if (cached?.blob) {
-        const url = URL.createObjectURL(cached.blob);
-        const a   = document.createElement("a");
-        a.href     = url;
-        a.download = `INV-${bill.bill_number}.pdf`;
-        a.click();
-        setTimeout(() => URL.revokeObjectURL(url), 5000);
-        showToast("PDF downloaded (offline copy)");
-        return;
-      }
-    } catch (cacheErr) {
-      console.warn("Local PDF cache unavailable:", cacheErr.message);
-    }
-
-    // 3. Regenerate
-    const customer = customers.find((c) => c.id === bill.customer_id);
-    const vehicle  = vehicles.find((v) => v.id === bill.vehicle_id);
-    let items = currentItems || billItems.filter((i) => i.bill_id === bill.id);
-    if (!items || items.length === 0) {
-      items = await fetchBillItemsByBillId(bill.id);
-    }
-
-    try {
-      showToast("Generating invoice PDF...");
-      const pdf = await generateInvoicePDF({ bill, items, customer, vehicle });
-      if (pdf) {
-        const pdfBlob = pdf.output("blob");
-        const savedBill = await persistInvoicePdf(bill, pdfBlob);
-        setBills((prev) => prev.map((entry) => (entry.id === bill.id ? savedBill : entry)));
-        setSelectedBill((current) => current?.id === bill.id ? savedBill : current);
-        await exportInvoicePDF({ bill, items, customer, vehicle }, showToast);
-      }
-    } catch (err) {
-      console.error("Failed to generate PDF:", err);
-      showToast("Failed to generate PDF.");
-    }
-  };
-
-  const sendToCustomer = async (bill, currentItems) => {
-    // Email and WhatsApp require internet connectivity
-    if (typeof navigator !== "undefined" && !navigator.onLine) {
-      showToast("Email and WhatsApp delivery require an internet connection. Connect and try again.");
-      return;
-    }
-
-    const customer = customers.find((c) => c.id === bill.customer_id);
-    const vehicle  = vehicles.find((v) => v.id === bill.vehicle_id);
-    let items = currentItems || billItems.filter((i) => i.bill_id === bill.id);
-    if (!items || items.length === 0) {
-      items = await fetchBillItemsByBillId(bill.id);
-    }
-
-    if (!customer?.phone_number && !customer?.email) {
-      showToast("No phone number or email address is on file for this customer.");
-      return;
-    }
-
-    const pdfReference = bill.pdf_url || null;
-    let pdfUrl = null;
-    let pdfBase64 = null;
-    let pdfBlob = null;
-
-    if (!pdfReference) {
-      showToast("No stored PDF found. Please save the invoice to generate it.");
-      return;
-    }
-
-    try {
-      showToast("Fetching stored PDF...");
-      pdfBlob = await downloadInvoicePdf(pdfReference);
-      pdfUrl = await createInvoiceEmailUrl(pdfReference);
-      pdfBase64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result.split(',')[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(pdfBlob);
-      });
-    } catch (fetchErr) {
-      console.error("Could not fetch cached PDF:", fetchErr);
-      showToast("Failed to retrieve invoice PDF. Please save it again.");
-      return;
-    }
-
-    let emailSent = null;
-    let emailError = null;
-
-    if (customer?.email) {
-      try {
-        showToast("Sending invoice email...");
-        const { sendInvoiceEmail } = await import("@/lib/email");
-        const resData = await sendInvoiceEmail({ bill, pdfBase64, pdfUrl });
-        emailSent = resData;
-      } catch (err) {
-        emailError = err.message;
-        console.error("Failed to send email:", err);
-      }
-    }
-
-    try {
-      // Check if native sharing is available for the PDF file (mobile/PWA support)
-      let sharedNatively = false;
-      if (pdfBlob && navigator.share && navigator.canShare) {
-        const pdfFile = new File([pdfBlob], `INV-${bill.bill_number}.pdf`, { type: "application/pdf" });
-        if (navigator.canShare({ files: [pdfFile] })) {
-          try {
-            await navigator.share({
-              files: [pdfFile],
-              title: `Invoice INV-${bill.bill_number}`,
-              text: `Hello ${customer.name}, 👋\n\nThank you for choosing Shree Royal Car! We hope you had a great experience with our vehicle services. 🚗✨\n\nYour invoice INV-${bill.bill_number} has been generated:\n• Total Amount: ${formatCurrency(bill.total_amount)}\n\nBest regards,\nShree Royal Car Team`,
-            });
-            sharedNatively = true;
-            if (emailSent) {
-              showToast(`Email sent & native share opened for ${customer.name}`);
-            } else if (emailError) {
-              showToast(`Native share opened, but email failed: ${emailError}`);
-            } else {
-              showToast(`Native share opened (No email on file for ${customer.name})`);
-            }
-          } catch (shareErr) {
-            console.warn("Native share cancelled or failed:", shareErr);
-          }
-        }
-      }
-
-      if (!sharedNatively) {
-        if (!customer?.phone_number) {
-          showToast(emailSent ? `Email sent to ${customer.name}` : `Email failed: ${emailError || "no address on file"}`);
-          return;
-        }
-
-        sendWhatsApp(
-          customer.phone_number,
-          customer.name,
-          `INV-${bill.bill_number}`,
-          formatCurrency(bill.total_amount),
-          pdfUrl
-        );
-
-        if (emailSent) {
-          showToast(`Email sent & WhatsApp opened for ${customer.name}`);
-        } else if (emailError) {
-          showToast(`WhatsApp opened, but email failed: ${emailError}`);
-        } else {
-          showToast(`WhatsApp opened (No email on file for ${customer.name})`);
-        }
-      }
-    } catch (err) {
-      showToast(`Failed to open WhatsApp: ${err.message}`);
-    }
-  };
 
   const handleMarkPaid = async (bill) => {
     const updatedBill = { ...bill, status: "paid" };
@@ -462,23 +268,6 @@ function BillingPage() {
         setShowBillForm(false);
         setEditingBill(null);
         showToast("Invoice updated");
-
-        // 3. Generate & upload PDF in the background
-        (async () => {
-          try {
-            const pdf = await generateInvoicePDF({ bill: nextBill, items: nextItems, customer, vehicle });
-            if (pdf) {
-              const pdfBlob = pdf.output("blob");
-              const finalBill = await persistInvoicePdf(nextBill, pdfBlob);
-              setBills((prev) => prev.map((item) => (item.id === finalBill.id ? finalBill : item)));
-              setSelectedBill((prev) => prev?.id === finalBill.id ? finalBill : prev);
-              console.info("Background invoice PDF storage complete");
-            }
-          } catch (pdfErr) {
-            console.error("Background PDF generation failed:", pdfErr.message);
-          }
-        })();
-
       } else {
         // Create flow:
         // 1. Save DB record immediately to get serial bill_number
@@ -493,22 +282,6 @@ function BillingPage() {
         setShowBillForm(false);
         setEditingBill(null);
         showToast("Invoice created successfully");
-
-        // 3. Generate & upload PDF in the background
-        (async () => {
-          try {
-            const pdf = await generateInvoicePDF({ bill: nextBill, items: nextItems, customer, vehicle });
-            if (pdf) {
-              const pdfBlob = pdf.output("blob");
-              const finalBill = await persistInvoicePdf(nextBill, pdfBlob);
-              setBills((prev) => prev.map((item) => (item.id === finalBill.id ? finalBill : item)));
-              setSelectedBill((prev) => prev?.id === finalBill.id ? finalBill : prev);
-              console.info("Background invoice PDF storage complete");
-            }
-          } catch (pdfErr) {
-            console.error("Background PDF generation failed:", pdfErr.message);
-          }
-        })();
       }
     } catch (err) {
       showToast(err.message);
@@ -686,8 +459,6 @@ function BillingPage() {
                             <td className="py-3 px-5 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                               <div className="flex items-center justify-end gap-0.5">
                                 <button onClick={() => openEditBillForm(bill)} className="flat-btn-ghost p-1.5" title="Edit"><Pencil size={15} strokeWidth={1.5} /></button>
-                                <button onClick={() => exportPDF(bill)} className="flat-btn-ghost p-1.5" title="PDF"><Download size={15} strokeWidth={1.5} /></button>
-                                <button onClick={() => sendToCustomer(bill)} className="flat-btn-ghost p-1.5 text-accent" title="Send"><Send size={15} strokeWidth={1.5} /></button>
                                 <button onClick={() => setConfirmDeleteBill(bill)} className="flat-btn-ghost p-1.5 text-gray-400 hover:text-red-500" title="Delete"><Trash2 size={15} strokeWidth={1.5} /></button>
                               </div>
                             </td>
@@ -750,8 +521,6 @@ function BillingPage() {
                           </div>
                           <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                             <button onClick={() => openEditBillForm(bill)} className="flat-btn-ghost p-1.5" title="Edit"><Pencil size={14} strokeWidth={1.5} /></button>
-                            <button onClick={() => exportPDF(bill)} className="flat-btn-ghost p-1.5" title="PDF"><Download size={14} strokeWidth={1.5} /></button>
-                            <button onClick={() => sendToCustomer(bill)} className="flat-btn-ghost p-1.5 text-accent" title="Send"><Send size={14} strokeWidth={1.5} /></button>
                             <button onClick={() => setConfirmDeleteBill(bill)} className="flat-btn-ghost p-1.5 text-gray-400 hover:text-red-500" title="Delete"><Trash2 size={14} strokeWidth={1.5} /></button>
                           </div>
                         </div>
@@ -771,8 +540,6 @@ function BillingPage() {
           customers={customers}
           vehicles={vehicles}
           onClose={() => setSelectedBill(null)}
-          onExportPDF={(currentItems) => exportPDF(selectedBill, currentItems)}
-          onSend={(currentItems) => sendToCustomer(selectedBill, currentItems)}
           onEdit={() => openEditBillForm(selectedBill)}
           onMarkPaid={() => handleMarkPaid(selectedBill)}
           onStatusChange={(newStatus) => handleStatusChange(selectedBill, newStatus)}
@@ -826,12 +593,10 @@ function BillingPage() {
   );
 }
 
-function BillDetailModal({ bill, items, customers, vehicles, onClose, onExportPDF, onSend, onEdit, onMarkPaid, onStatusChange, showToast, onItemsUpdated }) {
+function BillDetailModal({ bill, items, customers, vehicles, onClose, onEdit, onMarkPaid, onStatusChange, showToast, onItemsUpdated }) {
   const customer = customers.find((c) => c.id === bill.customer_id);
   const vehicle = vehicles.find((v) => v.id === bill.vehicle_id);
   const isOnlinePending = bill.payment_method === "online" && bill.status === "pending";
-  const [sending, setSending] = useState(false);
-  const [sendError, setSendError] = useState(null);
   const [modalItems, setModalItems] = useState(items || []);
   const [prevPropItems, setPrevPropItems] = useState(items);
 
@@ -856,32 +621,6 @@ function BillDetailModal({ bill, items, customers, vehicles, onClose, onExportPD
       mounted = false;
     };
   }, [bill?.id, onItemsUpdated]);
-
-  const handleResendWhatsApp = async () => {
-    setSending(true);
-    setSendError(null);
-    try {
-      let shareUrl = bill.pdf_url || null;
-      if (shareUrl) {
-        try {
-          shareUrl = await createInvoiceEmailUrl(bill.pdf_url);
-        } catch (urlErr) {
-          console.warn("Could not generate signed invoice URL for WhatsApp:", urlErr);
-        }
-      }
-      sendWhatsApp(
-        customer?.phone_number,
-        customer?.name,
-        `INV-${bill.bill_number}`,
-        formatCurrency(bill.total_amount),
-        shareUrl
-      );
-      setSending(false);
-    } catch (err) {
-      setSendError(err.message);
-      setSending(false);
-    }
-  };
 
   return (
     <Modal title={`Invoice #INV-${bill.bill_number}`} onClose={onClose} wide>
@@ -1010,32 +749,17 @@ function BillDetailModal({ bill, items, customers, vehicles, onClose, onExportPD
           <div className="flex items-center gap-3">
             <div className="flex-1 min-w-0">
               <p className="text-xs font-semibold text-amber-800">Awaiting online payment</p>
-              <p className="text-[11px] text-amber-600 mt-0.5">Once confirmed, mark as paid manually or resend the link.</p>
+              <p className="text-[11px] text-amber-600 mt-0.5">Once confirmed, mark as paid manually.</p>
             </div>
-            <button
-              onClick={handleResendWhatsApp}
-              disabled={sending}
-              className="flat-btn text-xs shrink-0 disabled:opacity-50"
-            >
-              <Send size={13} strokeWidth={1.5} />
-              {sending ? "Sending…" : "Resend Link"}
-            </button>
             <button onClick={onMarkPaid} className="flat-btn-primary text-xs shrink-0">
               ✓ Mark Paid
             </button>
           </div>
-          {sendError && (
-            <p className="text-[11px] text-red-500">{sendError}</p>
-          )}
         </div>
       )}
 
       <div className="flex flex-wrap gap-2 mt-4">
-        <button onClick={() => onExportPDF && onExportPDF(modalItems)} className="flat-btn"><Download size={14} strokeWidth={1.5} /> PDF</button>
-        <button onClick={() => onEdit && onEdit(modalItems)} className="flat-btn"><Pencil size={14} strokeWidth={1.5} /> Edit</button>
-        {!isOnlinePending && (
-          <button onClick={() => onSend && onSend(modalItems)} className="flat-btn-primary"><Send size={14} strokeWidth={1.5} /> Send</button>
-        )}
+        <button onClick={() => onEdit && onEdit(modalItems)} className="flat-btn-primary"><Pencil size={14} strokeWidth={1.5} /> Edit Invoice</button>
       </div>
     </Modal>
   );

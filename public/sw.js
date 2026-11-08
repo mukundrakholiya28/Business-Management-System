@@ -108,7 +108,6 @@ self.addEventListener("fetch", (event) => {
 
   // Static assets
   if (
-    url.pathname.startsWith("/fonts/") ||
     url.pathname.match(/\.(ico|png|jpg|jpeg|svg|webp|woff2?|ttf|otf)$/)
   ) {
     event.respondWith(cacheFirst(request));

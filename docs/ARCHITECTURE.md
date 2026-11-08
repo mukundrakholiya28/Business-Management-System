@@ -4,7 +4,7 @@ This document details the multi-platform architecture of the **Shree Royal Car B
 
 The system is designed in **two complementary parts**:
 1. **The Web Application (Cloud Portal)** — Accessible anywhere via web browser, hosted on Vercel/Node.js, communicating directly with Supabase.
-2. **The Offline-Compatible Desktop App** — Runs locally on desktop machines (even without an internet connection), stores data locally in IndexedDB/local storage, and automatically syncs changes when online.
+2. **The Offline-Compatible Desktop App** — Runs locally on desktop machines (even without an internet connection), stores data locally in IndexedDB, and automatically syncs changes when online.
 
 ---
 
@@ -19,7 +19,7 @@ flowchart TD
     end
 
     subgraph Part2["Part 2: Offline Desktop Application"]
-        Desktop["Desktop App (Installed PWA / Electron)"]
+        Desktop["Desktop App (Installed PWA / Desktop Wrapper)"]
         SW["Service Worker (sw.js Cache)"]
         LocalDB[("Local Storage / Dexie IndexedDB")]
         SyncEngine["Bi-Directional Sync Engine"]
@@ -32,15 +32,12 @@ flowchart TD
     subgraph Backend["Cloud Backend (Supabase)"]
         Auth["Supabase Auth"]
         Postgres[("PostgreSQL Database (RLS Enforced)")]
-        Storage["Supabase Storage (PDF Invoices)"]
     end
 
     NextWeb <--> Auth
     NextWeb <--> Postgres
-    NextWeb <--> Storage
 
     SyncEngine <-->|Auto-sync when online| Postgres
-    SyncEngine <-->|Upload cached PDFs| Storage
     Desktop <-->|Session token cache| Auth
 ```
 
@@ -54,16 +51,13 @@ The web application is built with **Next.js 16 (App Router)** and styled with **
 - **Server and Client Rendering**: Pages render responsive interfaces for managing customers, vehicles, invoices, finance, and workers.
 - **Direct Cloud Connectivity**: Authenticates directly with Supabase Auth and queries PostgreSQL via Row Level Security (RLS) policies.
 - **REST / API Routes**:
-  - `/api/generate-invoice`: Renders pixel-perfect A4 EJS invoice templates with embedded fonts and brand assets.
-  - `/api/send-email`: Dispatches invoice emails via Resend / SMTP.
-  - `/api/whatsapp-webhook`: Receives and processes inbound WhatsApp notifications.
   - `/api/health`: Health check and uptime monitoring.
 
 ---
 
 ## 💻 Part 2: Offline-Compatible Desktop Application
 
-Auto repair shops frequently experience intermittent or zero internet connectivity. The desktop experience must function uninterrupted when offline.
+Auto repair shops frequently experience intermittent or zero internet connectivity. The desktop experience functions uninterrupted when offline.
 
 ### How Offline Compatibility Works:
 
@@ -101,7 +95,7 @@ sequenceDiagram
    - Transparent in-memory caching coalesces concurrent reads.
 2. **Local Database (`src/lib/local-db.js`)**:
    - Powered by **Dexie.js** (IndexedDB).
-   - Stores tables: `customers`, `vehicles`, `bills`, `bill_items`, `workers`, `salary_records`, `sync_queue`, `pdf_cache`, and `sync_meta`.
+   - Stores tables: `customers`, `vehicles`, `bills`, `bill_items`, `workers`, `salary_records`, `sync_queue`, and `sync_meta`.
 3. **Bi-Directional Sync Engine (`src/lib/sync-engine.js`)**:
    - Continuously monitors network health (`navigator.onLine` + lightweight probe ping).
    - Flushes offline queue on reconnect and pulls latest cloud delta updates.
@@ -130,8 +124,7 @@ To run the offline application as a desktop app, two pathways exist:
 - **How it works**: Package the frontend inside an **Electron** shell (`electron/main.js`).
 - **Benefits**:
   - Bundled as a standalone `.exe` installer.
-  - Native Windows print dialog integration.
-  - Can launch local background services if needed.
+  - Native Windows system integration.
 
 ---
 
@@ -146,20 +139,18 @@ Business-Management-System/
 │   │   ├── finance/            # Revenue & analytics charts
 │   │   ├── workers/            # Worker payroll & attendance
 │   │   ├── profile/            # Workshop profile & bank details
-│   │   └── api/                # Cloud endpoints (PDF, email, webhooks)
+│   │   └── api/                # Cloud endpoints (health checks)
 │   ├── components/             # Reusable UI & Layout components
 │   ├── context/                # AuthContext & SyncContext providers
 │   ├── hooks/                  # Custom React hooks (e.g. useReconnectReload)
-│   ├── lib/                    # Core business logic:
-│   │   ├── data-layer.js       # Unified data access (offline-first switch)
-│   │   ├── local-db.js         # IndexedDB schema (Dexie)
-│   │   ├── local-repo.js       # Local CRUD database operations
-│   │   ├── sync-engine.js      # Bi-directional sync engine
-│   │   ├── supabase.js         # Supabase client & auth helpers
-│   │   └── pdf.js              # Offline-capable invoice PDF generator
-│   └── templates/
-│       └── invoice/            # EJS template, CSS, and sample data for invoices
-├── public/                     # Static assets, fonts, icons, Service Worker
+│   └── lib/                    # Core business logic:
+│       ├── data-layer.js       # Unified data access (offline-first switch)
+│       ├── local-db.js         # IndexedDB schema (Dexie)
+│       ├── local-repo.js       # Local CRUD database operations
+│       ├── sync-engine.js      # Bi-directional sync engine
+│       ├── supabase.js         # Supabase client & auth helpers
+│       └── helpers.js          # Formatting & normalization helpers
+├── public/                     # Static assets (logo, favicon, Service Worker)
 ├── supabase/                   # PostgreSQL schemas, RLS policies, RPC migrations
 ├── docs/                       # Comprehensive documentation & setup guides
 └── scripts/                    # Pre-cache & build automation scripts

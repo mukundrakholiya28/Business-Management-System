@@ -27,7 +27,7 @@ import {
   setAppSetting,
   getAppSetting,
 } from "./local-repo";
-import { INVOICE_BUCKET } from "./invoice-storage";
+
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -130,10 +130,7 @@ export async function runSync(opts = {}) {
     // ── 2. Pull cloud changes ────────────────────────────────────────────────
     await pullCloudChanges();
 
-    // ── 3. Upload pending PDFs ───────────────────────────────────────────────
-    await uploadPendingPdfs();
-
-    // ── 4. Final state ───────────────────────────────────────────────────────
+    // ── 3. Final state ───────────────────────────────────────────────────────
     const pending    = await getPendingCount();
     const failed     = await getFailedCount();
     const syncedAt   = new Date().toISOString();
@@ -492,57 +489,7 @@ async function mergeServerRow(db, tableName, serverRow, userId) {
   }, serverRow.updated_at));
 }
 
-// ─── PDF upload ───────────────────────────────────────────────────────────────
 
-async function uploadPendingPdfs() {
-  if (!supabase) return;
-  const db = getDb();
-
-  const pending = await db.pdf_cache
-    .where("sync_status")
-    .equals("pending_upload")
-    .toArray();
-
-  for (const cached of pending) {
-    try {
-      const bill = await db.bills.get(cached.bill_id);
-      if (!bill?.bill_number) continue;
-
-      const { data: session } = await supabase.auth.getSession();
-      const userId = session?.session?.user?.id;
-      if (!userId) continue;
-
-      const filePath = `${userId}/INV-${bill.bill_number}.pdf`;
-      const { error } = await supabase.storage
-        .from(INVOICE_BUCKET)
-        .upload(filePath, cached.blob, {
-          contentType:  "application/pdf",
-          upsert:       true,
-          cacheControl: "0",
-        });
-
-      if (error) throw new Error(error.message);
-
-      // Update bill.pdf_url in Supabase
-      await supabase
-        .from("bills")
-        .update({ pdf_url: filePath })
-        .eq("id", cached.bill_id);
-
-      // Update local bill.pdf_url
-      await db.bills.update(cached.bill_id, {
-        pdf_url:    filePath,
-        sync_status: SYNC_STATUS.SYNCED,
-      });
-
-      // Mark PDF as uploaded
-      await db.pdf_cache.update(cached.bill_id, { sync_status: "uploaded" });
-
-    } catch (err) {
-      console.warn(`[sync-engine] PDF upload failed for bill ${cached.bill_id}:`, err.message);
-    }
-  }
-}
 
 // ─── Initial data population ──────────────────────────────────────────────────
 

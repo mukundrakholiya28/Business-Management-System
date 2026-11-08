@@ -9,7 +9,6 @@
 
 import { useAuth } from "@/context/AuthContext";
 import { SyncProvider } from "@/context/SyncContext";
-import OfflineBanner from "@/components/OfflineBanner";
 import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
 
 export default function LayoutClient({ children }) {
@@ -18,7 +17,6 @@ export default function LayoutClient({ children }) {
   return (
     <SyncProvider userId={user?.id ?? null}>
       <ServiceWorkerRegistrar />
-      <OfflineBanner />
       {children}
     </SyncProvider>
   );

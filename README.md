@@ -21,9 +21,8 @@ This repository powers **two integrated experiences** from a single, unified cod
 
 - **🧾 Smart Invoicing & Billing**:
   - Instant invoice creation with customer auto-suggest, vehicle selector, and line item calculations.
-  - Multi-page A4 PDF rendering with custom typography and brand headers.
-  - Offline-first invoice generation with local fallback templates.
-  - Direct WhatsApp and Email sharing.
+  - Quick status management (Draft, Pending, Partially Paid, Paid, Cancelled).
+  - Instant local saving with automatic background sync when connected.
 - **👥 Customer & Fleet Tracking**:
   - Customer profiles, multi-vehicle linkages, complete service visit history, and total revenue tracking.
 - **📊 Financial Analytics**:
@@ -51,24 +50,18 @@ Business-Management-System/
 │   │   ├── profile/            # Workshop profile & bank settings
 │   │   ├── login/              # Authentication & password reset
 │   │   └── api/                # Cloud endpoints:
-│   │       ├── generate-invoice/  # Server-side PDF invoice rendering
-│   │       ├── send-email/        # Resend / SMTP email delivery
-│   │       ├── whatsapp-webhook/  # Meta WhatsApp webhook receiver
-│   │       └── health/            # System health check
+│   │       └── health/         # System health check
 │   ├── components/             # Reusable UI components & layouts
 │   ├── context/                # React Contexts (AuthContext, SyncContext)
 │   ├── hooks/                  # Custom React hooks (useReconnectReload, etc.)
-│   ├── lib/                    # Core business logic & services:
-│   │   ├── data-layer.js       # Unified data access (offline-first switch)
-│   │   ├── local-db.js         # IndexedDB schema & Dexie tables
-│   │   ├── local-repo.js       # Local CRUD operations
-│   │   ├── sync-engine.js      # Bi-directional cloud sync engine
-│   │   ├── supabase.js         # Supabase client & authentication
-│   │   ├── pdf.js              # Offline-safe PDF generator
-│   │   └── helpers.js          # Currency, phone, date formatters
-│   └── templates/
-│       └── invoice/            # Branded EJS template, CSS, and sample data
-├── public/                     # Static assets (logo, favicon, sw.js, offline fonts)
+│   └── lib/                    # Core business logic & services:
+│       ├── data-layer.js       # Unified data access (offline-first switch)
+│       ├── local-db.js         # IndexedDB schema & Dexie tables
+│       ├── local-repo.js       # Local CRUD operations
+│       ├── sync-engine.js      # Bi-directional cloud sync engine
+│       ├── supabase.js         # Supabase client & authentication
+│       └── helpers.js          # Currency, phone, date formatters
+├── public/                     # Static assets (logo, favicon, sw.js, offline.html)
 ├── supabase/                   # PostgreSQL migrations, schema, and RPC scripts
 ├── docs/                       # Guides, deployment checklists, and architecture docs
 └── scripts/                    # Build scripts (e.g. generate-sw-precache.mjs)
@@ -101,7 +94,6 @@ cp .env.example .env
 Edit `.env` with your actual project keys:
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-*(See [.env.example](.env.example) for optional SMTP and WhatsApp variables)*
 
 ### 4. Database Setup
 1. Open your Supabase project's **SQL Editor**.
@@ -136,7 +128,6 @@ Detailed guides are located in the [`docs/`](docs/) directory:
 - 🛡️ [RLS Setup Verification](docs/RLS-SETUP-COMPLETE.md) — RLS deployment verification steps.
 - 🚀 [Deployment Checklist](docs/DEPLOYMENT-CHECKLIST.md) — Production deployment instructions (Vercel).
 - 🎨 [Design System & Tokens](docs/DESIGN-SYSTEM-NEUMORPHIC.md) — Soft UI / Neumorphic styling tokens.
-- 🔔 [Webhook Setup Guide](docs/WEBHOOK-SETUP.md) — WhatsApp notification webhooks.
 
 ---
 

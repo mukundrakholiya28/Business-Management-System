@@ -331,19 +331,7 @@ export async function saveSalaryRecord(record) {
   return result;
 }
 
-// ─── PDF cache ────────────────────────────────────────────────────────────────
 
-export async function storePdfLocally(bill, pdfBlob) {
-  if (!isBrowser()) return;
-  const { storePdfLocally: localStore } = await import("./local-repo");
-  return localStore(bill, pdfBlob);
-}
-
-export async function getPdfFromCache(billId) {
-  if (!isBrowser()) return null;
-  const { getPdfFromCache: localGet } = await import("./local-repo");
-  return localGet(billId);
-}
 
 // ─── isSupabaseReady (backward compat) ───────────────────────────────────────
 
