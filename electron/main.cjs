@@ -1,7 +1,7 @@
 // @ts-check
 delete process.env.ELECTRON_RUN_AS_NODE;
 
-const { app, BrowserWindow, shell, ipcMain } = require("electron");
+const { app, BrowserWindow, shell, ipcMain, Menu } = require("electron");
 const path = require("path");
 const http = require("http");
 const net = require("net");
@@ -161,6 +161,70 @@ function createMainWindow(startUrl) {
   });
 }
 
+function setupApplicationMenu() {
+  const template = [
+    {
+      label: "File",
+      submenu: [
+        {
+          label: "Print Bill / Screen",
+          accelerator: "CmdOrCtrl+P",
+          click: () => mainWindow?.webContents.print(),
+        },
+        { type: "separator" },
+        { role: "quit", label: "Exit Shree Royal Car BMS" },
+      ],
+    },
+    {
+      label: "Edit",
+      submenu: [
+        { role: "undo" },
+        { role: "redo" },
+        { type: "separator" },
+        { role: "cut" },
+        { role: "copy" },
+        { role: "paste" },
+        { role: "selectAll" },
+      ],
+    },
+    {
+      label: "View",
+      submenu: [
+        { role: "reload", accelerator: "CmdOrCtrl+R" },
+        { role: "forceReload", accelerator: "CmdOrCtrl+Shift+R" },
+        { type: "separator" },
+        { role: "togglefullscreen", accelerator: "F11" },
+        { role: "resetZoom" },
+        { role: "zoomIn" },
+        { role: "zoomOut" },
+        { type: "separator" },
+        { role: "toggleDevTools", accelerator: "F12" },
+      ],
+    },
+    {
+      label: "Help",
+      submenu: [
+        {
+          label: "About Shree Royal Car BMS",
+          click: () => {
+            const { dialog } = require("electron");
+            if (mainWindow) {
+              dialog.showMessageBox(mainWindow, {
+                type: "info",
+                title: "About Shree Royal Car BMS",
+                message: `Shree Royal Car Care - Business Management System\nVersion: ${app.getVersion()}\nDesktop Platform: ${process.platform} (${process.arch})\nOffline-capable Desktop Application`,
+              });
+            }
+          },
+        },
+      ],
+    },
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+}
+
 // Single instance lock
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
@@ -174,6 +238,8 @@ if (!gotTheLock) {
   });
 
   app.whenReady().then(async () => {
+    setupApplicationMenu();
+
     // Setup IPC listeners for window management
     ipcMain.on("window-minimize", () => mainWindow?.minimize());
     ipcMain.on("window-maximize", () => {
@@ -181,6 +247,7 @@ if (!gotTheLock) {
       mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize();
     });
     ipcMain.on("window-close", () => mainWindow?.close());
+    ipcMain.on("window-print", () => mainWindow?.webContents.print());
     ipcMain.handle("get-app-version", () => app.getVersion());
 
     try {

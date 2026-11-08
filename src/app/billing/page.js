@@ -33,6 +33,7 @@ import {
   Pencil,
   UserPlus,
   ChevronDown,
+  Printer,
 } from "lucide-react";
 
 const TIME_FILTERS = [
@@ -760,6 +761,7 @@ function BillDetailModal({ bill, items, customers, vehicles, onClose, onEdit, on
 
       <div className="flex flex-wrap gap-2 mt-4">
         <button onClick={() => onEdit && onEdit(modalItems)} className="flat-btn-primary"><Pencil size={14} strokeWidth={1.5} /> Edit Invoice</button>
+        <button onClick={() => window.print()} className="flat-btn"><Printer size={14} strokeWidth={1.5} /> Print</button>
       </div>
     </Modal>
   );

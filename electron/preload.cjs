@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   minimize: () => ipcRenderer.send("window-minimize"),
   maximize: () => ipcRenderer.send("window-maximize"),
   close: () => ipcRenderer.send("window-close"),
+  print: () => ipcRenderer.send("window-print"),
   getAppVersion: () => ipcRenderer.invoke("get-app-version"),
 });
 

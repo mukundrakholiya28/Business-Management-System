@@ -11,7 +11,7 @@ import { useReconnectReload } from "@/hooks/useReconnectReload";
 import {
   ArrowLeft, Car, Phone, Mail, MapPin, Receipt,
   Pencil, ChevronDown, ChevronRight,
-  FileText, Trash2, Plus, UserPlus,
+  FileText, Trash2, Plus, UserPlus, Printer,
 } from "lucide-react";
 
 export default function CustomerDetailPage() {
@@ -811,6 +811,7 @@ function BillDetailModal({ bill, items, customer, vehicle, onClose, onEdit, onSt
 
       <div className="flex flex-wrap gap-2 mt-4">
         <button onClick={() => onEdit && onEdit(modalItems)} className="flat-btn-primary"><Pencil size={14} strokeWidth={1.5} /> Edit Invoice</button>
+        <button onClick={() => window.print()} className="flat-btn"><Printer size={14} strokeWidth={1.5} /> Print</button>
       </div>
     </Modal>
   );
