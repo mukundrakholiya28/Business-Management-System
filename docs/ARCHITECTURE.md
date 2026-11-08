@@ -120,11 +120,16 @@ To run the offline application as a desktop app, two pathways exist:
   - Zero additional executable download required.
 
 ### Approach B: Native Desktop Wrapper (Electron)
-- **Status**: Optional extension.
-- **How it works**: Package the frontend inside an **Electron** shell (`electron/main.js`).
-- **Benefits**:
-  - Bundled as a standalone `.exe` installer.
-  - Native Windows system integration.
+- **Status**: **Fully implemented & ready**.
+- **How it works**:
+  - The Next.js 16 application builds into a self-contained runtime using `output: 'standalone'` in `next.config.mjs`.
+  - Electron manages the application window via `electron/main.cjs` and securely exposes desktop APIs through `electron/preload.cjs`.
+  - In production / packaged mode, Electron automatically starts the embedded Next.js standalone server on an available localhost port, verifies its health status, and loads it within the native application window.
+  - No external Node.js installation is required for the end user.
+- **Available Scripts**:
+  - `npm run electron:dev`: Launches Next.js dev server and connects the Electron window with hot module reloading.
+  - `npm run electron:start`: Builds the production standalone server and launches it inside Electron locally.
+  - `npm run electron:pack`: Builds and bundles the standalone Windows installer and portable `.exe` in `dist-electron/`.
 
 ---
 
@@ -132,6 +137,9 @@ To run the offline application as a desktop app, two pathways exist:
 
 ```
 Business-Management-System/
+├── electron/                   # Electron desktop app process & preload
+│   ├── main.cjs                # Electron window & embedded server manager
+│   └── preload.cjs             # Secure desktop context bridge
 ├── src/
 │   ├── app/                    # Next.js App Router (Pages & API routes)
 │   │   ├── billing/            # Invoice creation & history

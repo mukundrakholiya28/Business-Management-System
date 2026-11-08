@@ -1,12 +1,18 @@
 {
   "name": "shree-royal-car-bms",
   "version": "0.1.0",
+  "description": "Shree Royal Car Care - Business Management System",
+  "author": "Shree Royal Car Care",
   "private": true,
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "next dev",
-    "build": "next build && node scripts/generate-sw-precache.mjs",
+    "build": "next build && node scripts/generate-sw-precache.mjs && node scripts/prepare-standalone.mjs",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "electron:dev": "node scripts/start-electron-dev.mjs",
+    "electron:start": "npm run build && electron .",
+    "electron:pack": "npm run build && electron-builder --win"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",
@@ -21,6 +27,8 @@
   },
   "devDependencies": {
     "autoprefixer": "^10.5.0",
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0",
     "eslint": "^9",
     "eslint-config-next": "^16.3.4",
     "postcss": "^8.5.15",

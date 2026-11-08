@@ -40,6 +40,9 @@ This repository powers **two integrated experiences** from a single, unified cod
 
 ```text
 Business-Management-System/
+├── electron/                   # Desktop application process & preload
+│   ├── main.cjs                # Electron window & embedded standalone server
+│   └── preload.cjs             # Safe desktop bridge API
 ├── src/
 │   ├── app/                    # Next.js 16 App Router pages & API routes
 │   │   ├── (dashboard)         # Dashboard overview (src/app/page.js)
@@ -111,10 +114,23 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ## 💻 Running as an Offline Desktop App
 
-### PWA Desktop Installation (Recommended)
+### Option 1: Standalone Windows App (.exe via Electron)
+Run the desktop app locally with an embedded Next.js server:
+```bash
+# Development mode with hot reload:
+npm run electron:dev
+
+# Run production standalone app:
+npm run electron:start
+
+# Build installer (.exe) & portable Windows packages into dist-electron/:
+npm run electron:pack
+```
+
+### Option 2: PWA Desktop Installation
 1. Open the application in **Google Chrome**, **Microsoft Edge**, or **Brave**.
 2. Click the **Install** icon in the browser address bar (or go to Menu > **Install Shree Royal Car**).
-3. The app will launch in a clean, standalone desktop window with its own taskbar icon and offline cache enabled.
+3. The app will launch in a clean desktop window with its own taskbar icon and offline cache enabled.
 
 ---
 
@@ -136,8 +152,11 @@ Detailed guides are located in the [`docs/`](docs/) directory:
 | Command | Description |
 |---|---|
 | `npm run dev` | Runs the Next.js development server with Turbopack |
-| `npm run build` | Builds the production Next.js app and generates SW precache list |
+| `npm run build` | Builds production standalone app, SW precache, and static bundles |
 | `npm run start` | Starts the production Next.js server |
+| `npm run electron:dev` | Launches Next.js dev server and connects Electron window |
+| `npm run electron:start` | Builds standalone server and launches Electron in production mode |
+| `npm run electron:pack` | Builds standalone Windows installer & portable `.exe` in `dist-electron/` |
 | `npm run lint` | Runs ESLint checks |
 
 ---

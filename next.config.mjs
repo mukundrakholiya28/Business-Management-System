@@ -20,6 +20,7 @@ const contentSecurityPolicy = [
 ].join("; ");
 
 const nextConfig = {
+  output: "standalone",
   async headers() {
     return [
       {

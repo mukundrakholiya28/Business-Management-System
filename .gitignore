@@ -47,3 +47,7 @@ next-env.d.ts
 
 # Generated at build time — do not commit
 /public/sw-precache.json
+
+# Electron build artifacts
+/dist-electron/
+/dist/
