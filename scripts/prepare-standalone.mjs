@@ -5,6 +5,7 @@
  */
 
 import { cp, mkdir } from "fs/promises";
+import { existsSync } from "fs";
 import { join } from "path";
 import { fileURLToPath } from "url";
 
@@ -17,6 +18,12 @@ const STATIC_SRC = join(ROOT, ".next", "static");
 const STATIC_DEST = join(STANDALONE_DIR, ".next", "static");
 
 async function main() {
+  // On Vercel or when standalone output is disabled, skip gracefully
+  if (process.env.VERCEL === "1" || !existsSync(STANDALONE_DIR)) {
+    console.log("[prepare-standalone] Skipping standalone preparation (running on Vercel or non-standalone build).");
+    process.exit(0);
+  }
+
   try {
     await mkdir(PUBLIC_DEST, { recursive: true });
     await cp(PUBLIC_SRC, PUBLIC_DEST, { recursive: true });
@@ -32,4 +39,3 @@ async function main() {
 }
 
 main();
-

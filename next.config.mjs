@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const isDevelopment = process.env.NODE_ENV === "development";
+const isVercel = process.env.VERCEL === "1";
 
 const contentSecurityPolicy = [
   "default-src 'self'",
@@ -20,7 +21,7 @@ const contentSecurityPolicy = [
 ].join("; ");
 
 const nextConfig = {
-  output: "standalone",
+  ...(isVercel ? {} : { output: "standalone" }),
   async headers() {
     return [
       {
