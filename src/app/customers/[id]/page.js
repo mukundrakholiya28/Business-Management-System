@@ -7,7 +7,7 @@ import { useProtectedRoute, useAuth } from "@/context/AuthContext";
 import { StatusSelect, EmptyState, Modal, PageSkeleton, PhoneNumber } from "@/components/ui";
 import { formatCurrency, formatDate, getInitials, generateId, formatPhoneNumber, getLocalDateString, formatVehicleNumber } from "@/lib/helpers";
 import { loadWorkshopData, saveBillWithItems, deleteVehicle, deleteBill, updateCustomer, saveVehicle, fetchBillItemsByBillId } from "@/lib/data-layer";
-import { supabase } from "@/lib/supabase";
+import { useReconnectReload } from "@/hooks/useReconnectReload";
 import {
   ArrowLeft, Car, Phone, Mail, MapPin, Receipt,
   Pencil, ChevronDown, ChevronRight,
@@ -63,6 +63,23 @@ export default function CustomerDetailPage() {
       .finally(() => { if (mounted) setLoadingData(false); });
     return () => { mounted = false; };
   }, [id, populateDone]);
+
+  // Auto-reload data when internet reconnects
+  useReconnectReload(() => {
+    if (!id) return;
+    loadWorkshopData()
+      .then((data) => {
+        const found = (data.customers || []).find((c) => c.id === id);
+        setCustomer(found || null);
+        setVehicles((data.vehicles || []).filter((v) => v.customer_id === id));
+        setBills((data.bills || []).filter((b) => b.customer_id === id));
+        setAllBills(data.bills || []);
+        setBillItems(data.billItems || []);
+        setAllCustomers(data.customers || []);
+        setAllVehicles(data.vehicles || []);
+      })
+      .catch(() => {});
+  });
 
   // Group bills by vehicle
   const billsByVehicle = useMemo(() => {
