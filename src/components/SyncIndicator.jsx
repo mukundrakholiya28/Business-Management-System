@@ -61,7 +61,7 @@ const STATUS_CONFIG = {
 };
 
 export default function SyncIndicator() {
-  const { status, pendingCount, failedCount, lastSyncedAt, error, triggerSync, retryFailed } =
+  const { status, pendingCount, failedCount, lastSyncedAt, error, triggerSync, retryFailed, clearFailed } =
     useSyncStatus();
   const [open, setOpen]     = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -95,6 +95,15 @@ export default function SyncIndicator() {
     setSyncing(true);
     try {
       await retryFailed();
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  async function handleClearFailed() {
+    setSyncing(true);
+    try {
+      await clearFailed();
     } finally {
       setSyncing(false);
     }
@@ -144,14 +153,13 @@ export default function SyncIndicator() {
             )}
 
             {failedCount > 0 && (
-              <p className="flex items-center gap-1 text-red-500">
-                <AlertCircle size={11} />
-                {failedCount} operation{failedCount !== 1 ? "s" : ""} failed
-              </p>
-            )}
-
-            {error && status === "error" && (
-              <p className="text-red-500 break-words">{error}</p>
+              <div className="rounded-lg bg-red-50/70 p-2 text-[11px] text-red-600 space-y-1">
+                <p className="flex items-center gap-1 font-semibold text-red-700">
+                  <AlertCircle size={11} />
+                  {failedCount} operation{failedCount !== 1 ? "s" : ""} failed
+                </p>
+                {error && <p className="text-[10px] text-red-500 break-words">{error}</p>}
+              </div>
             )}
 
             {lastSyncedAt && (
@@ -179,14 +187,25 @@ export default function SyncIndicator() {
             </button>
 
             {failedCount > 0 && (
-              <button
-                onClick={handleRetry}
-                disabled={syncing}
-                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                <AlertCircle size={11} strokeWidth={2} />
-                Retry Failed
-              </button>
+              <>
+                <button
+                  onClick={handleRetry}
+                  disabled={syncing}
+                  className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 font-medium disabled:opacity-50 transition-colors"
+                  title="Retry failed operations"
+                >
+                  <AlertCircle size={11} strokeWidth={2} />
+                  Retry
+                </button>
+                <button
+                  onClick={handleClearFailed}
+                  disabled={syncing}
+                  className="px-2 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 font-medium disabled:opacity-50 transition-colors"
+                  title="Dismiss failed operations from queue"
+                >
+                  Dismiss
+                </button>
+              </>
             )}
           </div>
         </div>

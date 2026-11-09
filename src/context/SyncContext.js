@@ -80,8 +80,21 @@ export function SyncProvider({ children, userId }) {
     }
   }, []);
 
+  const clearFailed = useCallback(async () => {
+    try {
+      const [{ clearFailedOps }, { runSync }] = await Promise.all([
+        import("@/lib/local-repo"),
+        import("@/lib/sync-engine"),
+      ]);
+      await clearFailedOps();
+      await runSync();
+    } catch (err) {
+      console.warn("[SyncContext] clearFailed error:", err);
+    }
+  }, []);
+
   return (
-    <SyncContext.Provider value={{ ...syncState, triggerSync, retryFailed }}>
+    <SyncContext.Provider value={{ ...syncState, triggerSync, retryFailed, clearFailed }}>
       {children}
     </SyncContext.Provider>
   );
@@ -93,7 +106,7 @@ export function useSyncStatus() {
     return {
       status: "idle", pendingCount: 0, failedCount: 0,
       lastSyncedAt: null, isOnline: null, error: null,
-      triggerSync: () => {}, retryFailed: () => {},
+      triggerSync: () => {}, retryFailed: () => {}, clearFailed: () => {},
     };
   }
   return ctx;

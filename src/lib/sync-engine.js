@@ -164,6 +164,16 @@ async function pushLocalOps() {
   const ops = await getPendingQueueOps();
   if (ops.length === 0) return;
 
+  // Supabase RLS enforces auth.uid() = user_id.
+  // If the client has no authenticated session, operations remain safely queued in IndexedDB
+  // rather than failing repeatedly against RLS policies.
+  const { data: sessionData } = await supabase.auth.getSession();
+  const currentUserId = sessionData?.session?.user?.id;
+  if (!currentUserId) {
+    console.log("[sync-engine] No active Supabase session. Mutations remain safely queued locally.");
+    return;
+  }
+
   // Dependency order: customers → vehicles → bills → bill_items → others
   const ORDER = ["customers", "vehicles", "bills", "bill_items", "workers", "salary_records", "business_profile"];
   ops.sort((a, b) => {
@@ -178,11 +188,12 @@ async function pushLocalOps() {
 
     await markQueueOpProcessing(op._seq);
     try {
-      await executePushOp(op);
+      await executePushOp(op, currentUserId);
       await markQueueOpDone(op._seq);
     } catch (err) {
       console.error("[sync-engine] push failed:", op.entity_type, op.operation, err.message);
       await markQueueOpFailed(op._seq, err.message);
+      await setState({ error: err.message });
     }
 
     // Exponential back-off between ops to avoid hammering the server
@@ -193,7 +204,7 @@ async function pushLocalOps() {
   }
 }
 
-async function executePushOp(op) {
+async function executePushOp(op, currentUserId) {
   if (!supabase) throw new Error("Supabase not configured");
 
   const { entity_type: table, entity_id, operation, payload } = op;
@@ -207,8 +218,7 @@ async function executePushOp(op) {
 
     // CREATE or UPDATE — use save_bill_with_items RPC
     const { bill, items } = payload;
-    const { data: session } = await supabase.auth.getSession();
-    const userId = session?.session?.user?.id;
+    const userId = currentUserId;
 
     const rpcParams = {
       p_bill_id:         operation === QUEUE_OP.UPDATE ? entity_id : null,
@@ -269,7 +279,7 @@ async function executePushOp(op) {
 
   if (operation === QUEUE_OP.CREATE) {
     // Strip local-only metadata before uploading
-    const serverPayload = toServerPayload(payload, table);
+    const serverPayload = toServerPayload(payload, table, currentUserId);
 
     const { error } = await supabase
       .from(table)
@@ -292,7 +302,7 @@ async function executePushOp(op) {
       .eq("id", entity_id)
       .single();
 
-    if (fetchErr && !fetchErr.message.includes("not found")) {
+    if (fetchErr && fetchErr.code !== "PGRST116" && !fetchErr.message?.includes("not found")) {
       throw new Error(fetchErr.message);
     }
 
@@ -312,7 +322,7 @@ async function executePushOp(op) {
       }
     }
 
-    const serverPayload = toServerPayload(payload, table);
+    const serverPayload = toServerPayload(payload, table, currentUserId);
 
     const { error: upErr } = await supabase
       .from(table)
@@ -370,7 +380,7 @@ async function serverDeleteBill(billId) {
 }
 
 /** Strip IndexedDB-only metadata fields before uploading to Supabase. */
-function toServerPayload(payload, table) {
+function toServerPayload(payload, table, currentUserId) {
   if (!payload) return payload;
 
   const {
@@ -381,8 +391,25 @@ function toServerPayload(payload, table) {
     is_deleted,     // local-only — Supabase has no is_deleted column
     gst_enabled,    // bills only — not a DB column
     gst_rate,       // bills only — not a DB column
+    _seq,
     ...serverPayload
   } = payload;
+
+  // Ensure valid user_id from active session if missing or empty
+  if (currentUserId && (!serverPayload.user_id || serverPayload.user_id === "")) {
+    serverPayload.user_id = currentUserId;
+  }
+
+  // Prevent Postgres UUID syntax error (22P02) on empty strings
+  if (serverPayload.user_id === "" || serverPayload.user_id === undefined) {
+    delete serverPayload.user_id;
+  }
+  if (serverPayload.customer_id === "") {
+    delete serverPayload.customer_id;
+  }
+  if (serverPayload.vehicle_id === "") {
+    delete serverPayload.vehicle_id;
+  }
 
   return serverPayload;
 }

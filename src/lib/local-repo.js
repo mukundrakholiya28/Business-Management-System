@@ -819,6 +819,22 @@ export async function resetFailedOps() {
     .modify({ status: QUEUE_STATUS.PENDING, retry_count: 0, error_message: null });
 }
 
+export async function clearFailedOps() {
+  const db = getDb();
+  await db.sync_queue
+    .where("status")
+    .equals(QUEUE_STATUS.FAILED)
+    .delete();
+}
+
+export async function getFailedOps() {
+  const db = getDb();
+  return db.sync_queue
+    .where("status")
+    .equals(QUEUE_STATUS.FAILED)
+    .toArray();
+}
+
 // ─── App settings ─────────────────────────────────────────────────────────────
 
 export async function getAppSetting(key) {
