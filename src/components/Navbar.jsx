@@ -3,11 +3,10 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut, Settings, User, WifiOff } from "lucide-react";
+import { LogOut, Settings, User } from "lucide-react";
 import GlobalSearch from "./GlobalSearch";
 import SyncIndicator from "./SyncIndicator";
 import { useAuth } from "@/context/AuthContext";
-import { useSyncStatus } from "@/context/SyncContext";
 
 const navItems = [
   { href: "/",          label: "Dashboard" },
@@ -19,8 +18,6 @@ const navItems = [
 export default function Navbar() {
   const pathname   = usePathname();
   const { logout } = useAuth();
-  const { status } = useSyncStatus();
-  const isOffline  = status === "offline";
 
   useEffect(() => {
     document.documentElement.classList.remove("dark");
@@ -67,17 +64,6 @@ export default function Navbar() {
 
         {/* Right side — with deliberate gap after the centered nav */}
         <div className="flex items-center gap-1 ml-auto shrink-0">
-
-          {/* Offline indicator — icon only, no banner */}
-          {isOffline && (
-            <span
-              title="You're offline — changes are saved locally and will sync when you reconnect"
-              className="flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-gray-500"
-              aria-label="Offline"
-            >
-              <WifiOff size={14} strokeWidth={2} />
-            </span>
-          )}
 
           {/* Extra spacing between nav and search on desktop */}
           <div className="hidden lg:block w-4" />
