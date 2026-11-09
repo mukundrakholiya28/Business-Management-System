@@ -11,16 +11,9 @@ export default function manifest() {
     categories:       ["business", "productivity"],
     icons: [
       {
-        src:     "/logo.png",
+        src:     "/favicon.ico",
         sizes:   "any",
-        type:    "image/png",
-        purpose: "any",
-      },
-      {
-        src:     "/logo.png",
-        sizes:   "192x192",
-        type:    "image/png",
-        purpose: "maskable",
+        type:    "image/x-icon",
       },
     ],
   };

@@ -43,14 +43,7 @@ export default function Navbar() {
 
         {/* Brand */}
         <Link href="/" className="shrink-0 hover:opacity-80 transition-opacity flex items-center gap-2">
-          {/* Logo icon */}
-          <img
-            src="/logo.png"
-            alt="Cars"
-            className="w-7 h-7 rounded-lg object-cover"
-            onError={(e) => { e.currentTarget.style.display = "none"; }}
-          />
-          <span className="font-oswald font-bold text-[22px] uppercase tracking-wider text-gray-900 whitespace-nowrap hidden sm:inline">
+          <span className="font-oswald font-bold text-[22px] uppercase tracking-wider text-gray-900 whitespace-nowrap">
             Cars
           </span>
         </Link>

@@ -3,6 +3,7 @@
   "appId": "com.cars.bms",
   "productName": "Cars",
   "copyright": "Copyright © 2026 Cars",
+  "electronDist": "node_modules/electron/dist",
   "directories": {
     "output": "dist-electron"
   },
@@ -26,8 +27,7 @@
         "target": "portable",
         "arch": ["x64"]
       }
-    ],
-    "icon": "public/logo.png"
+    ]
   },
   "nsis": {
     "oneClick": false,

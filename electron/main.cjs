@@ -129,7 +129,6 @@ function createMainWindow(startUrl) {
     minWidth: 1024,
     minHeight: 700,
     title: "Cars - Business Management System",
-    icon: path.join(__dirname, "..", "public", "logo.png"),
     autoHideMenuBar: true,
     show: false,
     backgroundColor: "#0B1120",

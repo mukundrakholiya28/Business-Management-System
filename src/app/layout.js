@@ -20,12 +20,7 @@ export const metadata = {
   description:
     "Business Management System for Cars. Manage customers, vehicles, billing, and worker payroll.",
   icons: {
-    icon: [
-      { url: "/logo.png",    type: "image/png", sizes: "any" },
-      { url: "/favicon.ico", sizes: "any"       },
-    ],
-    apple:   "/logo.png",
-    shortcut: "/logo.png",
+    icon: [{ url: "/favicon.ico", sizes: "any" }],
   },
 };
 

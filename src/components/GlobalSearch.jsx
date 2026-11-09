@@ -1,9 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect, useSyncExternalStore } from "react";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Search, X, ArrowRight } from "lucide-react";
+import { Search, X, ArrowRight, Car } from "lucide-react";
 import { loadWorkshopData } from "@/lib/data-layer";
 import { normalizeSearch, formatVehicleNumber, getInitials } from "@/lib/helpers";
 import { createPortal } from "react-dom";
@@ -36,13 +35,9 @@ function ResultItem({ r, onClick }) {
         </>
       ) : (
         <>
-          <Image
-            src="/logo.png"
-            alt="Car Logo"
-            width={32}
-            height={32}
-            className="w-8 h-8 rounded-lg object-contain bg-gray-50 border border-gray-100 shrink-0"
-          />
+          <div className="w-8 h-8 rounded-lg bg-gray-100 text-gray-500 flex items-center justify-center shrink-0">
+            <Car size={16} strokeWidth={1.5} />
+          </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-gray-900">{formatVehicleNumber(r.vehicle.vehicle_number)}</p>
             <p className="text-[11px] text-gray-400 mt-0.5">{r.vehicle.make} {r.vehicle.model} · {r.customer?.name}</p>
