@@ -695,80 +695,6 @@ export async function deleteBill(billId) {
   });
 }
 
-// ─── Workers ──────────────────────────────────────────────────────────────────
-
-export async function loadWorkers() {
-  const db      = getDb();
-  const workers = await db.workers.where("is_deleted").equals(0).toArray();
-  return workers.sort((a, b) => new Date(b.joined_at || 0) - new Date(a.joined_at || 0));
-}
-
-export async function saveWorker(worker, userId) {
-  const db       = getDb();
-  const ts       = now();
-  const isEditing = Boolean(worker.id);
-  const existing  = isEditing ? await db.workers.get(worker.id) : null;
-  const workerId  = worker.id || newId();
-  const { id: _id, ...payload } = worker;
-
-  const row = pendingRow({
-    ...(existing || {}),
-    id:          workerId,
-    user_id:     userId || existing?.user_id || payload.user_id || null,
-    name:        payload.name,
-    role:        payload.role,
-    phone:       payload.phone       || null,
-    base_salary: payload.base_salary || 0,
-    is_active:   payload.is_active   ?? true,
-    joined_at:   payload.joined_at   || ts.split("T")[0],
-    created_at:  existing?.created_at || ts,
-    updated_at:  ts,
-  });
-
-  await db.transaction("rw", db.workers, db.sync_queue, async () => {
-    await db.workers.put(row);
-    await enqueue("workers", workerId, isEditing ? QUEUE_OP.UPDATE : QUEUE_OP.CREATE, row);
-  });
-  return row;
-}
-
-// ─── Salary Records ───────────────────────────────────────────────────────────
-
-export async function loadSalaryRecords() {
-  const db      = getDb();
-  // salary_records has no is_deleted — filter all, sort by date
-  const records = await db.salary_records.toArray();
-  return records.sort((a, b) => new Date(b.date_paid || 0) - new Date(a.date_paid || 0));
-}
-
-export async function saveSalaryRecord(record, userId) {
-  const db = getDb();
-  const ts = now();
-  const { id: _id, ...payload } = record;
-  const recordId = record.id || newId();
-
-  const row = pendingRow({
-    id:          recordId,
-    user_id:     userId || payload.user_id || null,
-    worker_id:   payload.worker_id,
-    amount_paid: payload.amount_paid,
-    salary_type: payload.salary_type || "salary",
-    month:       payload.month       || null,
-    year:        payload.year        || null,
-    date_paid:   payload.date_paid   || ts.split("T")[0],
-    notes:       payload.notes       || null,
-    created_at:  ts,
-  });
-
-  await db.transaction("rw", db.salary_records, db.sync_queue, async () => {
-    await db.salary_records.put(row);
-    await enqueue("salary_records", recordId, QUEUE_OP.CREATE, row);
-  });
-  return row;
-}
-
-
-
 // ─── Sync queue helpers (used by sync engine) ─────────────────────────────────
 
 export async function getPendingQueueOps() {
@@ -870,7 +796,7 @@ export async function wipeUserData(userId) {
   await db.transaction(
     "rw",
     db.customers, db.vehicles, db.bills, db.bill_items,
-    db.workers, db.salary_records, db.business_profile,
+    db.business_profile,
     db.sync_queue, db.sync_checkpoint, db.app_settings,
     async () => {
       if (userId) {
@@ -879,8 +805,6 @@ export async function wipeUserData(userId) {
           db.vehicles.where("user_id").equals(userId).delete(),
           db.bills.where("user_id").equals(userId).delete(),
           db.bill_items.where("user_id").equals(userId).delete(),
-          db.workers.where("user_id").equals(userId).delete(),
-          db.salary_records.where("user_id").equals(userId).delete(),
           db.business_profile.where("user_id").equals(userId).delete(),
         ]);
       } else {
@@ -889,8 +813,6 @@ export async function wipeUserData(userId) {
           db.vehicles.clear(),
           db.bills.clear(),
           db.bill_items.clear(),
-          db.workers.clear(),
-          db.salary_records.clear(),
           db.business_profile.clear(),
         ]);
       }

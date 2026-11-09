@@ -1,12 +1,10 @@
 import {
   loadWorkshopData,
-  loadWorkers,
-  loadSalaryRecords,
   loadProfile,
   invalidateCache,
 } from "./data-layer";
 import { supabase } from "./supabase";
-import { syncedRow, pendingRow, QUEUE_OP } from "./local-db";
+import { syncedRow } from "./local-db";
 import { toServerPayload } from "./sync-engine";
 
 /**
@@ -35,10 +33,8 @@ async function getCurrentUserId() {
  * Generates a full structured backup of the current database.
  */
 export async function generateBackupData() {
-  const [workshopData, workers, salaryRecords, profile] = await Promise.all([
+  const [workshopData, profile] = await Promise.all([
     loadWorkshopData().catch(() => ({ customers: [], vehicles: [], bills: [], billItems: [] })),
-    loadWorkers().catch(() => []),
-    loadSalaryRecords().catch(() => []),
     loadProfile().catch(() => null),
   ]);
 
@@ -52,8 +48,6 @@ export async function generateBackupData() {
     vehicles: vehicles.length,
     bills: bills.length,
     bill_items: billItems.length,
-    workers: workers.length,
-    salary_records: salaryRecords.length,
     has_profile: Boolean(profile),
   };
 
@@ -71,8 +65,6 @@ export async function generateBackupData() {
       vehicles,
       bills,
       bill_items: billItems,
-      workers,
-      salary_records: salaryRecords,
     },
   };
 }
@@ -138,12 +130,6 @@ export function parseAndValidateBackup(fileText) {
     : Array.isArray(rawData.billItems)
     ? rawData.billItems
     : [];
-  const workers = Array.isArray(rawData.workers) ? rawData.workers : [];
-  const salaryRecords = Array.isArray(rawData.salary_records)
-    ? rawData.salary_records
-    : Array.isArray(rawData.salaryRecords)
-    ? rawData.salaryRecords
-    : [];
   const businessProfile =
     rawData.business_profile && typeof rawData.business_profile === "object"
       ? rawData.business_profile
@@ -154,8 +140,6 @@ export function parseAndValidateBackup(fileText) {
     vehicles.length +
     bills.length +
     billItems.length +
-    workers.length +
-    salaryRecords.length +
     (businessProfile ? 1 : 0);
 
   if (totalRecords === 0) {
@@ -170,8 +154,6 @@ export function parseAndValidateBackup(fileText) {
     vehicles: vehicles.length,
     bills: bills.length,
     bill_items: billItems.length,
-    workers: workers.length,
-    salary_records: salaryRecords.length,
     has_profile: Boolean(businessProfile),
     total_records: totalRecords,
   };
@@ -190,8 +172,6 @@ export function parseAndValidateBackup(fileText) {
       vehicles,
       bills,
       bill_items: billItems,
-      workers,
-      salary_records: salaryRecords,
     },
   };
 }
@@ -236,8 +216,6 @@ export async function restoreBackupData({ backupData, mode = "merge", onProgress
         await supabase.from("bills").delete().eq("user_id", userId);
         await supabase.from("vehicles").delete().eq("user_id", userId);
         await supabase.from("customers").delete().eq("user_id", userId);
-        await supabase.from("salary_records").delete().eq("user_id", userId);
-        await supabase.from("workers").delete().eq("user_id", userId);
       } catch (err) {
         console.warn("[restore] Cloud clean error (continuing):", err.message);
       }
@@ -321,12 +299,6 @@ export async function restoreBackupData({ backupData, mode = "merge", onProgress
   // 4. Bill Line Items
   await restoreTable("bill_items", backupData.bill_items);
 
-  // 5. Workers
-  await restoreTable("workers", backupData.workers);
-
-  // 6. Salary Records
-  await restoreTable("salary_records", backupData.salary_records);
-
   // ── Post-Restore Invalidation & Sync ──────────────────────────────────────
   onProgress?.("Finalizing restored data...");
   invalidateCache();
@@ -347,10 +319,7 @@ export async function restoreBackupData({ backupData, mode = "merge", onProgress
       vehicles: backupData.vehicles?.length || 0,
       bills: backupData.bills?.length || 0,
       bill_items: backupData.bill_items?.length || 0,
-      workers: backupData.workers?.length || 0,
-      salary_records: backupData.salary_records?.length || 0,
       has_profile: Boolean(backupData.business_profile),
     },
   };
 }
-

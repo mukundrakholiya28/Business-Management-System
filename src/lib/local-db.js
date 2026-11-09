@@ -48,6 +48,12 @@ export function getDb() {
     salary_records: "&id, user_id, worker_id, sync_status, date_paid",
   });
 
+  // Version 5: drops workers and salary_records
+  db.version(5).stores({
+    workers: null,
+    salary_records: null,
+  });
+
   _db = db;
   return db;
 }

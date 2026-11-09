@@ -16,8 +16,6 @@ import {
   Users,
   Car,
   FileText,
-  UserCheck,
-  DollarSign,
   Building2,
 } from "lucide-react";
 import {
@@ -128,7 +126,7 @@ export default function BackupRestoreSection({ onProfileUpdated }) {
 
     if (restoreMode === "clean") {
       const confirmed = window.confirm(
-        "CAUTION: 'Clean Restore' will completely erase current records before restoring this backup file.\n\nAre you absolutely sure you want to proceed?"
+        "CAUTION: 'Clean Restore' will completely erase current customer and billing records before restoring this backup file.\n\nAre you absolutely sure you want to proceed?"
       );
       if (!confirmed) return;
     }
@@ -166,7 +164,7 @@ export default function BackupRestoreSection({ onProfileUpdated }) {
           Backup & Data Restoration
         </h2>
         <p className="text-xs text-gray-500">
-          Save an offline snapshot of your complete business records or restore a previous backup in case of data loss or device migration.
+          Save an offline snapshot of your business records or restore a previous backup in case of data loss or device migration.
         </p>
       </div>
 
@@ -190,13 +188,11 @@ export default function BackupRestoreSection({ onProfileUpdated }) {
         {loadingLiveStats ? (
           <div className="text-xs text-gray-400 animate-pulse py-2">Scanning database tables...</div>
         ) : liveStats ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 text-center">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
             <StatBadge icon={Users} label="Customers" count={liveStats.customers} />
             <StatBadge icon={Car} label="Vehicles" count={liveStats.vehicles} />
             <StatBadge icon={FileText} label="Bills" count={liveStats.bills} />
             <StatBadge icon={Layers} label="Line Items" count={liveStats.bill_items} />
-            <StatBadge icon={UserCheck} label="Workers" count={liveStats.workers} />
-            <StatBadge icon={DollarSign} label="Salaries" count={liveStats.salary_records} />
           </div>
         ) : (
           <div className="text-xs text-gray-400">Unable to load record counts.</div>
@@ -214,7 +210,7 @@ export default function BackupRestoreSection({ onProfileUpdated }) {
               <h3 className="text-sm font-semibold text-gray-900">Create & Download Backup</h3>
             </div>
             <p className="text-xs text-gray-600 max-w-lg leading-relaxed">
-              Exports a complete JSON file containing your customers, vehicles, invoices, bill items, staff members, salary records, and company settings.
+              Exports a complete JSON file containing your customers, vehicles, invoices, bill items, and company settings.
             </p>
           </div>
 
@@ -239,7 +235,7 @@ export default function BackupRestoreSection({ onProfileUpdated }) {
                 {exportSuccess.filename}
               </div>
               <div className="text-[11px] text-gray-500">
-                Contains {exportSuccess.summary.customers} customers, {exportSuccess.summary.bills} bills, {exportSuccess.summary.bill_items} line items, {exportSuccess.summary.workers} workers.
+                Contains {exportSuccess.summary.customers} customers, {exportSuccess.summary.vehicles} vehicles, {exportSuccess.summary.bills} bills, and {exportSuccess.summary.bill_items} line items.
               </div>
             </div>
           </div>
@@ -315,13 +311,11 @@ export default function BackupRestoreSection({ onProfileUpdated }) {
             </div>
 
             {/* Records Summary Badges */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 text-center">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
               <StatBadge icon={Users} label="Customers" count={parsedBackup.summary.customers} color="indigo" />
               <StatBadge icon={Car} label="Vehicles" count={parsedBackup.summary.vehicles} color="indigo" />
               <StatBadge icon={FileText} label="Bills" count={parsedBackup.summary.bills} color="indigo" />
               <StatBadge icon={Layers} label="Line Items" count={parsedBackup.summary.bill_items} color="indigo" />
-              <StatBadge icon={UserCheck} label="Workers" count={parsedBackup.summary.workers} color="indigo" />
-              <StatBadge icon={DollarSign} label="Salaries" count={parsedBackup.summary.salary_records} color="indigo" />
             </div>
 
             {/* Restore Mode Selector */}
@@ -428,7 +422,7 @@ export default function BackupRestoreSection({ onProfileUpdated }) {
                 Data Restoration Complete!
               </div>
               <div className="text-emerald-700 leading-relaxed">
-                Successfully restored {restoreSuccess.customers} customers, {restoreSuccess.vehicles} vehicles, {restoreSuccess.bills} bills, {restoreSuccess.bill_items} line items, {restoreSuccess.workers} staff members, and {restoreSuccess.salary_records} salary entries.
+                Successfully restored {restoreSuccess.customers} customers, {restoreSuccess.vehicles} vehicles, {restoreSuccess.bills} bills, and {restoreSuccess.bill_items} line items.
               </div>
               <div className="text-[11px] text-emerald-600 pt-1">
                 All data is loaded locally and synchronized with the cloud database.
@@ -460,4 +454,3 @@ function StatBadge({ icon: Icon, label, count, color = "gray" }) {
     </div>
   );
 }
-

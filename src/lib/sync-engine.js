@@ -175,7 +175,7 @@ async function pushLocalOps() {
   }
 
   // Dependency order: customers → vehicles → bills → bill_items → others
-  const ORDER = ["customers", "vehicles", "bills", "bill_items", "workers", "salary_records", "business_profile"];
+  const ORDER = ["customers", "vehicles", "bills", "bill_items", "business_profile"];
   ops.sort((a, b) => {
     const ai = ORDER.indexOf(a.entity_type);
     const bi = ORDER.indexOf(b.entity_type);
@@ -421,8 +421,6 @@ const PULL_TABLES = [
   { name: "vehicles",         orderCol: "updated_at" },
   { name: "bills",            orderCol: "updated_at" },
   { name: "bill_items",       orderCol: "created_at" },
-  { name: "workers",          orderCol: "updated_at" },
-  { name: "salary_records",   orderCol: "created_at" },
   { name: "business_profile", orderCol: "updated_at" },
 ];
 

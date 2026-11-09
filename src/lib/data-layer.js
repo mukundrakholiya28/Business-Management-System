@@ -277,64 +277,6 @@ export async function saveProfile(profile) {
   return result;
 }
 
-// ─── Workers ─────────────────────────────────────────────────────────────────
-
-export async function loadWorkers() {
-  if (!isBrowser()) {
-    const { loadWorkers: c } = await import("./workshop-data");
-    return c();
-  }
-  try {
-    const { loadWorkers: localLoad } = await import("./local-repo");
-    return await localLoad();
-  } catch {
-    const { loadWorkers: c } = await import("./workshop-data");
-    return c();
-  }
-}
-
-export async function saveWorker(worker) {
-  const userId = await getCurrentUserId();
-  if (!isBrowser()) {
-    const { saveWorker: c } = await import("./workshop-data");
-    return c(worker);
-  }
-  const { saveWorker: localSave } = await import("./local-repo");
-  const result = await localSave(worker, userId);
-  invalidateCache(); _triggerSync();
-  return result;
-}
-
-// ─── Salary records ───────────────────────────────────────────────────────────
-
-export async function loadSalaryRecords() {
-  if (!isBrowser()) {
-    const { loadSalaryRecords: c } = await import("./workshop-data");
-    return c();
-  }
-  try {
-    const { loadSalaryRecords: localLoad } = await import("./local-repo");
-    return await localLoad();
-  } catch {
-    const { loadSalaryRecords: c } = await import("./workshop-data");
-    return c();
-  }
-}
-
-export async function saveSalaryRecord(record) {
-  const userId = await getCurrentUserId();
-  if (!isBrowser()) {
-    const { saveSalaryRecord: c } = await import("./workshop-data");
-    return c(record);
-  }
-  const { saveSalaryRecord: localSave } = await import("./local-repo");
-  const result = await localSave(record, userId);
-  invalidateCache(); _triggerSync();
-  return result;
-}
-
-
-
 // ─── isSupabaseReady (backward compat) ───────────────────────────────────────
 
 export { isSupabaseReady } from "./workshop-data";

@@ -26,7 +26,6 @@ const SHELL_PAGES = [
   "/billing",
   "/customers",
   "/finance",
-  "/workers",
   "/profile",
   "/offline.html",
 ];

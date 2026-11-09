@@ -637,60 +637,6 @@ export async function deleteBill(billId) {
   }
 }
 
-// ─── Workers / Salary (legacy) ────────────────────────────────────────────────
-
-export async function loadWorkers() {
-  if (!isSupabaseReady()) throw new Error("Supabase is not configured.");
-  const { data, error } = await supabase
-    .from("workers").select("*").order("joined_at", { ascending: false });
-  if (error) throw new Error(error.message);
-  return data || [];
-}
-
-export async function saveWorker(worker) {
-  if (!isSupabaseReady()) throw new Error("Supabase is not configured.");
-  const userId = await getUserId();
-  const { id, ...payload } = worker;
-  if (id) {
-    const { data, error } = await supabase
-      .from("workers")
-      .update({ ...payload, user_id: userId })
-      .eq("id", id)
-      .select("*")
-      .single();
-    if (error) throw new Error(error.message);
-    return data;
-  }
-  const { data, error } = await supabase
-    .from("workers")
-    .insert([{ ...payload, user_id: userId }])
-    .select("*")
-    .single();
-  if (error) throw new Error(error.message);
-  return data;
-}
-
-export async function loadSalaryRecords() {
-  if (!isSupabaseReady()) throw new Error("Supabase is not configured.");
-  const { data, error } = await supabase
-    .from("salary_records").select("*").order("date_paid", { ascending: false });
-  if (error) throw new Error(error.message);
-  return data || [];
-}
-
-export async function saveSalaryRecord(record) {
-  if (!isSupabaseReady()) throw new Error("Supabase is not configured.");
-  const userId = await getUserId();
-  const { id, ...payload } = record;
-  const { data, error } = await supabase
-    .from("salary_records")
-    .insert([{ ...payload, user_id: userId }])
-    .select("*")
-    .single();
-  if (error) throw new Error(error.message);
-  return data;
-}
-
 // ─── Paginated Loaders for Performance Optimization ───────────────────────────
 
 /**

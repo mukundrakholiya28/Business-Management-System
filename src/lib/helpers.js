@@ -59,24 +59,6 @@ export function getStatusStyle(status) {
 }
 
 /**
- * Get salary type badge styling
- */
-export function getSalaryTypeStyle(type) {
-  switch (type) {
-    case "salary":
-      return { bg: "rgba(109,181,160,0.15)", color: "#4a9e80" };
-    case "bonus":
-      return { bg: "rgba(116,168,224,0.15)", color: "#5a8cc0" };
-    case "advance":
-      return { bg: "rgba(224,180,116,0.15)", color: "#c49340" };
-    case "deduction":
-      return { bg: "rgba(224,116,116,0.15)", color: "#c05a5a" };
-    default:
-      return { bg: "rgba(160,168,180,0.15)", color: "#6b7280" };
-  }
-}
-
-/**
  * Generate a unique ID (for demo mode)
  */
 export function generateId() {

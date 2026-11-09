@@ -88,44 +88,7 @@ CREATE TABLE bill_items (
 CREATE INDEX idx_bill_items_bill ON bill_items (bill_id);
 
 -- ──────────────────────────────────────────────────────────────
--- 5. WORKERS
--- ──────────────────────────────────────────────────────────────
-CREATE TABLE workers (
-  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id     UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-  name        TEXT          NOT NULL,
-  role        TEXT          NOT NULL,      -- e.g. "Mechanic", "Painter", "Electrician"
-  phone       VARCHAR(15),
-  base_salary NUMERIC(12,2) NOT NULL DEFAULT 0,
-  is_active   BOOLEAN       NOT NULL DEFAULT TRUE,
-  joined_at   DATE          NOT NULL DEFAULT CURRENT_DATE,
-  created_at  TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
-  updated_at  TIMESTAMPTZ   NOT NULL DEFAULT NOW()
-);
-
--- ──────────────────────────────────────────────────────────────
--- 6. SALARY RECORDS  (ledger of every payout)
--- ──────────────────────────────────────────────────────────────
-CREATE TYPE salary_type AS ENUM ('salary', 'bonus', 'advance', 'deduction');
-
-CREATE TABLE salary_records (
-  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id     UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-  worker_id   UUID          NOT NULL REFERENCES workers(id) ON DELETE RESTRICT,
-  amount_paid NUMERIC(12,2) NOT NULL,
-  salary_type salary_type   NOT NULL DEFAULT 'salary',
-  month       SMALLINT,            -- 1-12
-  year        SMALLINT,            -- e.g. 2026
-  date_paid   DATE          NOT NULL DEFAULT CURRENT_DATE,
-  notes       TEXT,
-  created_at  TIMESTAMPTZ   NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX idx_salary_worker ON salary_records (worker_id);
-CREATE INDEX idx_salary_date   ON salary_records (date_paid DESC);
-
--- ──────────────────────────────────────────────────────────────
--- 7. HELPER: auto-update `updated_at` trigger
+-- 5. HELPER: auto-update `updated_at` trigger
 -- ──────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION update_updated_at()
 RETURNS TRIGGER AS $$
@@ -142,9 +105,6 @@ CREATE TRIGGER trg_vehicles_updated BEFORE UPDATE ON vehicles
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 CREATE TRIGGER trg_bills_updated BEFORE UPDATE ON bills
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-
-CREATE TRIGGER trg_workers_updated BEFORE UPDATE ON workers
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 -- ──────────────────────────────────────────────────────────────

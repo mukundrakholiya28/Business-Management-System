@@ -9,8 +9,6 @@ ALTER TABLE customers       ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES aut
 ALTER TABLE vehicles         ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
 ALTER TABLE bills             ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
 ALTER TABLE bill_items        ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
-ALTER TABLE workers           ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
-ALTER TABLE salary_records    ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
 ALTER TABLE business_profile  ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
 
 -- ── 2. Back-fill existing rows (assign to the first user, or leave NULL for now)
@@ -26,8 +24,6 @@ ALTER TABLE customers       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vehicles         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bills             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bill_items        ENABLE ROW LEVEL SECURITY;
-ALTER TABLE workers           ENABLE ROW LEVEL SECURITY;
-ALTER TABLE salary_records    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE business_profile  ENABLE ROW LEVEL SECURITY;
 
 -- ── 4. Drop any existing policies (clean slate) ──────────────
@@ -36,8 +32,6 @@ DROP POLICY IF EXISTS customers_policy        ON customers;
 DROP POLICY IF EXISTS vehicles_policy         ON vehicles;
 DROP POLICY IF EXISTS bills_policy            ON bills;
 DROP POLICY IF EXISTS bill_items_policy       ON bill_items;
-DROP POLICY IF EXISTS workers_policy          ON workers;
-DROP POLICY IF EXISTS salary_records_policy   ON salary_records;
 DROP POLICY IF EXISTS business_profile_policy ON business_profile;
 
 -- ── 5. Create RLS policies ───────────────────────────────────
@@ -77,16 +71,6 @@ CREATE POLICY bill_items_policy ON bill_items
     )
   );
 
-CREATE POLICY workers_policy ON workers
-  FOR ALL
-  USING      (auth.uid() = user_id)
-  WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY salary_records_policy ON salary_records
-  FOR ALL
-  USING      (auth.uid() = user_id)
-  WITH CHECK (auth.uid() = user_id);
-
 CREATE POLICY business_profile_policy ON business_profile
   FOR ALL
   USING      (auth.uid() = user_id)
@@ -97,8 +81,6 @@ CREATE POLICY business_profile_policy ON business_profile
 CREATE INDEX IF NOT EXISTS idx_customers_user        ON customers       (user_id);
 CREATE INDEX IF NOT EXISTS idx_vehicles_user         ON vehicles         (user_id);
 CREATE INDEX IF NOT EXISTS idx_bills_user            ON bills             (user_id);
-CREATE INDEX IF NOT EXISTS idx_workers_user          ON workers          (user_id);
-CREATE INDEX IF NOT EXISTS idx_salary_records_user   ON salary_records   (user_id);
 CREATE INDEX IF NOT EXISTS idx_business_profile_user ON business_profile (user_id);
 
 -- ── Done ─────────────────────────────────────────────────────
