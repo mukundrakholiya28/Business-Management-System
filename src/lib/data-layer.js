@@ -24,7 +24,7 @@ let _cacheTime     = 0;
 let _inflight      = null;
 const CACHE_TTL_MS = 2000;
 
-function invalidateCache() {
+export function invalidateCache() {
   _cachedData = null;
   _cacheTime  = 0;
 }
@@ -294,12 +294,13 @@ export async function loadWorkers() {
 }
 
 export async function saveWorker(worker) {
+  const userId = await getCurrentUserId();
   if (!isBrowser()) {
     const { saveWorker: c } = await import("./workshop-data");
     return c(worker);
   }
   const { saveWorker: localSave } = await import("./local-repo");
-  const result = await localSave(worker);
+  const result = await localSave(worker, userId);
   invalidateCache(); _triggerSync();
   return result;
 }
@@ -321,12 +322,13 @@ export async function loadSalaryRecords() {
 }
 
 export async function saveSalaryRecord(record) {
+  const userId = await getCurrentUserId();
   if (!isBrowser()) {
     const { saveSalaryRecord: c } = await import("./workshop-data");
     return c(record);
   }
   const { saveSalaryRecord: localSave } = await import("./local-repo");
-  const result = await localSave(record);
+  const result = await localSave(record, userId);
   invalidateCache(); _triggerSync();
   return result;
 }

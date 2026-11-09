@@ -703,7 +703,7 @@ export async function loadWorkers() {
   return workers.sort((a, b) => new Date(b.joined_at || 0) - new Date(a.joined_at || 0));
 }
 
-export async function saveWorker(worker) {
+export async function saveWorker(worker, userId) {
   const db       = getDb();
   const ts       = now();
   const isEditing = Boolean(worker.id);
@@ -714,6 +714,7 @@ export async function saveWorker(worker) {
   const row = pendingRow({
     ...(existing || {}),
     id:          workerId,
+    user_id:     userId || existing?.user_id || payload.user_id || null,
     name:        payload.name,
     role:        payload.role,
     phone:       payload.phone       || null,
@@ -740,7 +741,7 @@ export async function loadSalaryRecords() {
   return records.sort((a, b) => new Date(b.date_paid || 0) - new Date(a.date_paid || 0));
 }
 
-export async function saveSalaryRecord(record) {
+export async function saveSalaryRecord(record, userId) {
   const db = getDb();
   const ts = now();
   const { id: _id, ...payload } = record;
@@ -748,6 +749,7 @@ export async function saveSalaryRecord(record) {
 
   const row = pendingRow({
     id:          recordId,
+    user_id:     userId || payload.user_id || null,
     worker_id:   payload.worker_id,
     amount_paid: payload.amount_paid,
     salary_type: payload.salary_type || "salary",
@@ -872,11 +874,25 @@ export async function wipeUserData(userId) {
     db.sync_queue, db.sync_checkpoint, db.app_settings,
     async () => {
       if (userId) {
-        await db.customers.where("user_id").equals(userId).delete();
-        await db.vehicles.where("user_id").equals(userId).delete();
-        await db.bills.where("user_id").equals(userId).delete();
-        await db.bill_items.where("user_id").equals(userId).delete();
-        await db.business_profile.where("user_id").equals(userId).delete();
+        await Promise.all([
+          db.customers.where("user_id").equals(userId).delete(),
+          db.vehicles.where("user_id").equals(userId).delete(),
+          db.bills.where("user_id").equals(userId).delete(),
+          db.bill_items.where("user_id").equals(userId).delete(),
+          db.workers.where("user_id").equals(userId).delete(),
+          db.salary_records.where("user_id").equals(userId).delete(),
+          db.business_profile.where("user_id").equals(userId).delete(),
+        ]);
+      } else {
+        await Promise.all([
+          db.customers.clear(),
+          db.vehicles.clear(),
+          db.bills.clear(),
+          db.bill_items.clear(),
+          db.workers.clear(),
+          db.salary_records.clear(),
+          db.business_profile.clear(),
+        ]);
       }
       await db.sync_queue.clear();
       await db.sync_checkpoint.clear();

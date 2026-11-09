@@ -146,13 +146,46 @@ function createMainWindow(startUrl) {
 
   mainWindow.loadURL(startUrl);
 
-  // Open external links in user's default browser, keep local navigation inside Electron
+  // Strictly allow local navigation inside Electron, open external URLs safely in system browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith("http://127.0.0.1") || url.startsWith("http://localhost")) {
-      return { action: "allow" };
+    try {
+      const parsed = new URL(url);
+      if (
+        (parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost") &&
+        (parsed.protocol === "http:" || parsed.protocol === "https:")
+      ) {
+        return { action: "allow" };
+      }
+      if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+        shell.openExternal(url);
+      }
+    } catch {
+      // Invalid URL - deny
     }
-    shell.openExternal(url);
     return { action: "deny" };
+  });
+
+  // Guard against untrusted external navigation inside the main window
+  mainWindow.webContents.on("will-navigate", (event, navigationUrl) => {
+    try {
+      const parsed = new URL(navigationUrl);
+      const isLocal =
+        (parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost") &&
+        (parsed.protocol === "http:" || parsed.protocol === "https:");
+      if (!isLocal) {
+        event.preventDefault();
+        if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+          shell.openExternal(navigationUrl);
+        }
+      }
+    } catch {
+      event.preventDefault();
+    }
+  });
+
+  // Prevent webview creation
+  mainWindow.webContents.on("will-attach-webview", (event) => {
+    event.preventDefault();
   });
 
   mainWindow.on("closed", () => {

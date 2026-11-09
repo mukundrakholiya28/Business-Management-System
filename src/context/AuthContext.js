@@ -80,6 +80,20 @@ export function AuthProvider({ children }) {
       // local-repo not available — proceed
     }
 
+    try {
+      const { wipeUserData } = await import("@/lib/local-repo");
+      await wipeUserData(user?.id);
+    } catch (e) {
+      console.warn("[AuthContext] wipeUserData error on logout:", e);
+    }
+
+    try {
+      const { invalidateCache } = await import("@/lib/data-layer");
+      invalidateCache();
+    } catch {
+      // local cache cleanup optional
+    }
+
     await supabase.auth.signOut();
     setUser(null);
   };

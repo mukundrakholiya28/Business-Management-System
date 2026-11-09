@@ -292,10 +292,6 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
     }
   }
 
-  console.log("--- saveBillWithItems (START) ---");
-  console.log("isEditing:", isEditing);
-  console.log("Frontend value (bill.created_at):", bill.created_at);
-
   const itemsProvided = items !== undefined && items !== null;
 
   // Recalculate totals if items are provided (server-side validation)
@@ -440,9 +436,6 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
     console.error("RPC Error saving bill:", rpcError);
     throw new Error(rpcError.message);
   }
-
-  console.log("Saved bill result from RPC:", savedBillJson);
-  console.log("--- saveBillWithItems (END) ---");
 
   return {
     bill:  savedBillJson,
@@ -656,15 +649,23 @@ export async function loadWorkers() {
 
 export async function saveWorker(worker) {
   if (!isSupabaseReady()) throw new Error("Supabase is not configured.");
+  const userId = await getUserId();
   const { id, ...payload } = worker;
   if (id) {
     const { data, error } = await supabase
-      .from("workers").update(payload).eq("id", id).select("*").single();
+      .from("workers")
+      .update({ ...payload, user_id: userId })
+      .eq("id", id)
+      .select("*")
+      .single();
     if (error) throw new Error(error.message);
     return data;
   }
   const { data, error } = await supabase
-    .from("workers").insert([payload]).select("*").single();
+    .from("workers")
+    .insert([{ ...payload, user_id: userId }])
+    .select("*")
+    .single();
   if (error) throw new Error(error.message);
   return data;
 }
@@ -679,9 +680,13 @@ export async function loadSalaryRecords() {
 
 export async function saveSalaryRecord(record) {
   if (!isSupabaseReady()) throw new Error("Supabase is not configured.");
+  const userId = await getUserId();
   const { id, ...payload } = record;
   const { data, error } = await supabase
-    .from("salary_records").insert([payload]).select("*").single();
+    .from("salary_records")
+    .insert([{ ...payload, user_id: userId }])
+    .select("*")
+    .single();
   if (error) throw new Error(error.message);
   return data;
 }

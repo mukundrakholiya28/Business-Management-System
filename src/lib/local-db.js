@@ -42,6 +42,12 @@ export function getDb() {
     pdf_cache: null,
   });
 
+  // Version 4: indexes user_id on workers and salary_records for RLS alignment
+  db.version(4).stores({
+    workers:        "&id, user_id, sync_status, is_deleted, updated_at",
+    salary_records: "&id, user_id, worker_id, sync_status, date_paid",
+  });
+
   _db = db;
   return db;
 }

@@ -92,6 +92,7 @@ CREATE INDEX idx_bill_items_bill ON bill_items (bill_id);
 -- ──────────────────────────────────────────────────────────────
 CREATE TABLE workers (
   id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id     UUID REFERENCES auth.users(id) ON DELETE CASCADE,
   name        TEXT          NOT NULL,
   role        TEXT          NOT NULL,      -- e.g. "Mechanic", "Painter", "Electrician"
   phone       VARCHAR(15),
@@ -109,6 +110,7 @@ CREATE TYPE salary_type AS ENUM ('salary', 'bonus', 'advance', 'deduction');
 
 CREATE TABLE salary_records (
   id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id     UUID REFERENCES auth.users(id) ON DELETE CASCADE,
   worker_id   UUID          NOT NULL REFERENCES workers(id) ON DELETE RESTRICT,
   amount_paid NUMERIC(12,2) NOT NULL,
   salary_type salary_type   NOT NULL DEFAULT 'salary',
