@@ -20,7 +20,7 @@ export function getDb() {
   // Require Dexie synchronously — safe because we only reach here in the browser
   const Dexie = require("dexie").default ?? require("dexie");
 
-  const db = new Dexie("shree-royal-car-bms");
+  const db = new Dexie("cars-bms");
 
   // Version 2: uses is_deleted (0/1) instead of deleted_at (null — not indexable)
   db.version(2).stores({

@@ -1,6 +1,6 @@
 # System Architecture & Two-Part Application Design
 
-This document details the multi-platform architecture of the **Shree Royal Car Business Management System (BMS)**.
+This document details the multi-platform architecture of the **Cars Business Management System (BMS)**.
 
 The system is designed in **two complementary parts**:
 1. **The Web Application (Cloud Portal)** — Accessible anywhere via web browser, hosted on Vercel/Node.js, communicating directly with Supabase.
@@ -112,7 +112,7 @@ To run the offline application as a desktop app, two pathways exist:
 
 ### Approach A: Progressive Web App (PWA) Desktop Installation (Built-in)
 - **Status**: Ready to use.
-- **How it works**: Open the app in Microsoft Edge, Google Chrome, or Brave. Click the **Install** button in the URL bar (or Menu > "Install Shree Royal Car").
+- **How it works**: Open the app in Microsoft Edge, Google Chrome, or Brave. Click the **Install** button in the URL bar (or Menu > "Install Cars").
 - **Benefits**:
   - Launches in an independent window without browser navigation buttons.
   - Pinned to Windows Taskbar and Start Menu.

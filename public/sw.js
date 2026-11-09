@@ -1,5 +1,5 @@
 /**
- * sw.js — Shree Royal Car BMS Service Worker
+ * sw.js — Cars BMS Service Worker
  * ─────────────────────────────────────────────────────────────────────────────
  * Caching strategies:
  *

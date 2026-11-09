@@ -128,7 +128,7 @@ function createMainWindow(startUrl) {
     height: 868,
     minWidth: 1024,
     minHeight: 700,
-    title: "Shree Royal Car - Business Management System",
+    title: "Cars - Business Management System",
     icon: path.join(__dirname, "..", "public", "logo.png"),
     autoHideMenuBar: true,
     show: false,
@@ -172,7 +172,7 @@ function setupApplicationMenu() {
           click: () => mainWindow?.webContents.print(),
         },
         { type: "separator" },
-        { role: "quit", label: "Exit Shree Royal Car BMS" },
+        { role: "quit", label: "Exit Cars" },
       ],
     },
     {
@@ -205,14 +205,14 @@ function setupApplicationMenu() {
       label: "Help",
       submenu: [
         {
-          label: "About Shree Royal Car BMS",
+          label: "About Cars",
           click: () => {
             const { dialog } = require("electron");
             if (mainWindow) {
               dialog.showMessageBox(mainWindow, {
                 type: "info",
-                title: "About Shree Royal Car BMS",
-                message: `Shree Royal Car Care - Business Management System\nVersion: ${app.getVersion()}\nDesktop Platform: ${process.platform} (${process.arch})\nOffline-capable Desktop Application`,
+                title: "About Cars",
+                message: `Cars - Business Management System\nVersion: ${app.getVersion()}\nDesktop Platform: ${process.platform} (${process.arch})\nOffline-capable Desktop Application`,
               });
             }
           },

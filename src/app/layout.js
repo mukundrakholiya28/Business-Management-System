@@ -16,9 +16,9 @@ const oswald = Oswald({
 });
 
 export const metadata = {
-  title: "Shree Royal Car — Workshop Manager",
+  title: "Cars — Business Management System",
   description:
-    "Business Management System for Shree Royal Car workshop. Manage customers, vehicles, billing, and worker payroll.",
+    "Business Management System for Cars. Manage customers, vehicles, billing, and worker payroll.",
   icons: {
     icon: [
       { url: "/logo.png",    type: "image/png", sizes: "any" },

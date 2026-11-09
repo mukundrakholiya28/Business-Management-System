@@ -561,10 +561,10 @@ export async function loadProfile(userId) {
   if (profile) return profile;
 
   return {
-    id: null, name: "Shree Royal Car",
-    tagline: "Automotive Repair & Car Wash", established: "2004",
-    address: "Ahmedabad, Gujarat", phone: "+91 98765 43210",
-    email: "billing@shreeroyalcar.in", gstin: "",
+    id: null, name: "Cars",
+    tagline: "", established: "",
+    address: "", phone: "",
+    email: "", gstin: "",
     payment_methods: "UPI / Bank Transfer / Cash",
     upi_id: "", bank_name: "", account_number: "", ifsc: "",
     invoice_notes: "Payment due within 7 days of invoice date.",

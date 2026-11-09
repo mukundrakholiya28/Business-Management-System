@@ -465,12 +465,12 @@ export async function loadProfile() {
   if (error && error.code !== "PGRST116") throw new Error(error.message);
 
   return data || {
-    name:            "Shree Royal Car",
-    tagline:         "Automotive Repair & Car Wash",
-    established:     "2004",
-    address:         "Ahmedabad, Gujarat",
-    phone:           "+91 98765 43210",
-    email:           "billing@shreeroyalcar.in",
+    name:            "Cars",
+    tagline:         "",
+    established:     "",
+    address:         "",
+    phone:           "",
+    email:           "",
     gstin:           "",
     payment_methods: "UPI / Bank Transfer / Cash",
     upi_id:          "",

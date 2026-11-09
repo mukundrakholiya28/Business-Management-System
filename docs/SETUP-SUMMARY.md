@@ -7,7 +7,7 @@ Your **Business Management System** is now production-ready with:
 ### ✅ Core Features
 - **Customer Management** — Add, edit, search customers with vehicles
 - **Invoice/Billing System** — Create professional invoices with line items
-- **PDF Generation** — Download invoices in Shree Royal Car branded format
+- **Invoice Printing** — Print bills and invoices with workshop branding
 - **Dashboard** — Recent invoices, quick stats, search functionality
 - **Business Profile** — Customizable company details, bank info, payment methods
 

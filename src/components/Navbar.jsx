@@ -46,12 +46,12 @@ export default function Navbar() {
           {/* Logo icon */}
           <img
             src="/logo.png"
-            alt="Shree Royal Car"
+            alt="Cars"
             className="w-7 h-7 rounded-lg object-cover"
             onError={(e) => { e.currentTarget.style.display = "none"; }}
           />
           <span className="font-oswald font-bold text-[22px] uppercase tracking-wider text-gray-900 whitespace-nowrap hidden sm:inline">
-            Shree Royal Car
+            Cars
           </span>
         </Link>
 

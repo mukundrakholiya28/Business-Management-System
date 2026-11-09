@@ -1,8 +1,8 @@
 export default function manifest() {
   return {
-    name:             "Shree Royal Car — Workshop Manager",
-    short_name:       "SRC Workshop",
-    description:      "Offline-first business management for Shree Royal Car workshop.",
+    name:             "Cars — Business Management System",
+    short_name:       "Cars",
+    description:      "Offline-first business management for Cars.",
     start_url:        "/",
     display:          "standalone",
     orientation:      "portrait-primary",

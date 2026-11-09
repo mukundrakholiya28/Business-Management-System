@@ -1,8 +1,8 @@
 {
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
-  "appId": "com.shreeroyalcar.bms",
-  "productName": "Shree Royal Car BMS",
-  "copyright": "Copyright © 2026 Shree Royal Car Care",
+  "appId": "com.cars.bms",
+  "productName": "Cars",
+  "copyright": "Copyright © 2026 Cars",
   "directories": {
     "output": "dist-electron"
   },
@@ -34,6 +34,6 @@
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
-    "shortcutName": "Shree Royal Car BMS"
+    "shortcutName": "Cars"
   }
 }

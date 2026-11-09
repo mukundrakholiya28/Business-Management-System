@@ -1,4 +1,4 @@
-# Shree Royal Car — Workshop & Business Management System (BMS)
+# Cars — Workshop & Business Management System (BMS)
 
 > A modern, full-featured automotive workshop management system built with Next.js 16, Tailwind CSS, Supabase, and an offline-first local database architecture.
 
@@ -129,7 +129,7 @@ npm run electron:pack
 
 ### Option 2: PWA Desktop Installation
 1. Open the application in **Google Chrome**, **Microsoft Edge**, or **Brave**.
-2. Click the **Install** icon in the browser address bar (or go to Menu > **Install Shree Royal Car**).
+2. Click the **Install** icon in the browser address bar (or go to Menu > **Install Cars**).
 3. The app will launch in a clean desktop window with its own taskbar icon and offline cache enabled.
 
 ---
@@ -162,4 +162,4 @@ Detailed guides are located in the [`docs/`](docs/) directory:
 ---
 
 ## 📄 License
-Private & Proprietary — Shree Royal Car. All rights reserved.
+Private & Proprietary — Cars. All rights reserved.

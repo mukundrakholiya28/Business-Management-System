@@ -67,7 +67,7 @@ export default function ProfilePage() {
             <div>
               <h1 className="text-xl font-semibold text-gray-900">Business Profile</h1>
               <p className="text-xs text-gray-400 mt-1">
-                Company details, payment info and invoice defaults — used on every PDF
+                Company details, payment info and invoice defaults — used on printed invoices and bills
               </p>
             </div>
             <button
@@ -110,22 +110,22 @@ export default function ProfilePage() {
                     <h2 className="text-sm font-semibold text-gray-900 mb-4">Company Details</h2>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <Field label="Business Name" icon={Building2}>
-                        <input value={profile.name || ""} onChange={(e) => set("name", e.target.value)} className="flat-input" placeholder="Shree Royal Car" />
+                        <input value={profile.name || ""} onChange={(e) => set("name", e.target.value)} className="flat-input" placeholder="Business Name" />
                       </Field>
                       <Field label="Tagline">
-                        <input value={profile.tagline || ""} onChange={(e) => set("tagline", e.target.value)} className="flat-input" placeholder="Automotive Repair & Car Wash" />
+                        <input value={profile.tagline || ""} onChange={(e) => set("tagline", e.target.value)} className="flat-input" placeholder="Business Tagline" />
                       </Field>
                       <Field label="Established Year">
-                        <input value={profile.established || ""} onChange={(e) => set("established", e.target.value)} className="flat-input" placeholder="2004" />
+                        <input value={profile.established || ""} onChange={(e) => set("established", e.target.value)} className="flat-input" placeholder="YYYY" />
                       </Field>
                       <Field label="Phone" icon={Phone}>
-                        <input value={profile.phone || ""} onChange={(e) => set("phone", e.target.value)} className="flat-input" placeholder="+91 98765 43210" />
+                        <input value={profile.phone || ""} onChange={(e) => set("phone", e.target.value)} className="flat-input" placeholder="XXXXXXXXXX" />
                       </Field>
                       <Field label="Email" icon={Mail}>
-                        <input value={profile.email || ""} onChange={(e) => set("email", e.target.value)} className="flat-input" placeholder="billing@shreeroyalcar.in" />
+                        <input value={profile.email || ""} onChange={(e) => set("email", e.target.value)} className="flat-input" placeholder="contact@example.com" />
                       </Field>
                       <Field label="Address" icon={MapPin} className="sm:col-span-2">
-                        <input value={profile.address || ""} onChange={(e) => set("address", e.target.value)} className="flat-input" placeholder="12 Ashram Road, Ahmedabad" />
+                        <input value={profile.address || ""} onChange={(e) => set("address", e.target.value)} className="flat-input" placeholder="Business Address" />
                       </Field>
                     </div>
                   </div>
@@ -142,7 +142,7 @@ export default function ProfilePage() {
                         <input value={profile.payment_methods || ""} onChange={(e) => set("payment_methods", e.target.value)} className="flat-input" placeholder="UPI / Bank Transfer / Cash" />
                       </Field>
                       <Field label="UPI ID">
-                        <input value={profile.upi_id || ""} onChange={(e) => set("upi_id", e.target.value)} className="flat-input" placeholder="shreeroyalcar@upi" />
+                        <input value={profile.upi_id || ""} onChange={(e) => set("upi_id", e.target.value)} className="flat-input" placeholder="business@upi" />
                       </Field>
                     </div>
                   </div>
@@ -153,13 +153,13 @@ export default function ProfilePage() {
                     <h2 className="text-sm font-semibold text-gray-900 mb-4">Bank Transfer</h2>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <Field label="Bank Name">
-                        <input value={profile.bank_name || ""} onChange={(e) => set("bank_name", e.target.value)} className="flat-input" placeholder="HDFC Bank" />
+                        <input value={profile.bank_name || ""} onChange={(e) => set("bank_name", e.target.value)} className="flat-input" placeholder="Bank Name" />
                       </Field>
                       <Field label="Account Number">
-                        <input value={profile.account_number || ""} onChange={(e) => set("account_number", e.target.value)} className="flat-input" placeholder="50100123456789" />
+                        <input value={profile.account_number || ""} onChange={(e) => set("account_number", e.target.value)} className="flat-input" placeholder="Account Number" />
                       </Field>
                       <Field label="IFSC Code">
-                        <input value={profile.ifsc || ""} onChange={(e) => set("ifsc", e.target.value)} className="flat-input" placeholder="HDFC0001234" />
+                        <input value={profile.ifsc || ""} onChange={(e) => set("ifsc", e.target.value)} className="flat-input" placeholder="IFSC Code" />
                       </Field>
                     </div>
                   </div>
