@@ -93,7 +93,9 @@ export async function probeConnectivity() {
       signal:  controller.signal,
       cache:   "no-store",
     });
-    return res.ok;
+    if (!res.ok) return false;
+    const json = await res.json().catch(() => null);
+    return json?.database === "connected";
   } catch {
     return false;
   } finally {

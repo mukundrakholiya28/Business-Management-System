@@ -50,7 +50,8 @@ function waitForServer(url, timeoutMs = 30000) {
     function ping() {
       http
         .get(url, (res) => {
-          if (res.statusCode === 200) {
+          // Any HTTP status between 200 and 499 confirms the local server is listening and responding
+          if (res.statusCode >= 200 && res.statusCode < 500) {
             resolve();
           } else {
             retry();
@@ -292,13 +293,17 @@ if (!gotTheLock) {
         });
       } else {
         const port = await findFreePort(3000);
-        appUrl = await startStandaloneServer(port);
+        appUrl = await startStandaloneServer(port).catch((err) => {
+          console.warn("[Electron] Standalone server health check warning, loading anyway:", err.message);
+          return `http://127.0.0.1:${port}`;
+        });
       }
 
       createMainWindow(appUrl);
     } catch (err) {
-      console.error("[Electron] Fatal startup failure:", err);
-      app.quit();
+      console.error("[Electron] Startup failure:", err);
+      // Fallback: try opening default local port instead of quitting immediately
+      createMainWindow("http://127.0.0.1:3000");
     }
   });
 

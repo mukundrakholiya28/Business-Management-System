@@ -555,10 +555,17 @@ export async function saveBillWithItems({ bill, items, isEditing, userId }) {
 
 export async function loadProfile(userId) {
   const db = getDb();
-  const profile = await db.business_profile
-    .filter((p) => p.user_id === userId && !p.is_deleted)
+  if (userId) {
+    const profile = await db.business_profile
+      .filter((p) => p.user_id === userId && !p.is_deleted)
+      .first();
+    if (profile) return profile;
+  }
+  // Fallback to any active profile in the local database (offline resilience)
+  const anyProfile = await db.business_profile
+    .filter((p) => !p.is_deleted)
     .first();
-  if (profile) return profile;
+  if (anyProfile) return anyProfile;
 
   return {
     id: null, name: "Cars",
@@ -577,7 +584,7 @@ export async function saveProfile(profile, userId) {
   const db  = getDb();
   const ts  = now();
   const existing = await db.business_profile
-    .filter((p) => p.user_id === userId && !p.is_deleted)
+    .filter((p) => (!p.is_deleted && (p.user_id === userId || !userId || !p.user_id)))
     .first();
 
   const row = pendingRow({

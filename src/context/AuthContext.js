@@ -16,20 +16,75 @@ export function AuthProvider({ children }) {
   const [populateDone, setPopulateDone] = useState(false);
 
   useEffect(() => {
-    if (!supabase) return undefined;
+    // 1. Immediately check for a previously cached session (instant offline startup)
+    let hasLocalSession = false;
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("cars_last_user") || localStorage.getItem("cars_offline_session");
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed && parsed.id) {
+            setUser(parsed);
+            setLoading(false);
+            hasLocalSession = true;
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    if (!supabase) {
+      if (!hasLocalSession) setLoading(false);
+      return undefined;
+    }
+
+    // 2. Query Supabase session without hanging if offline
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => {
+        if (session?.user) {
+          setUser(session.user);
+          try {
+            localStorage.setItem("cars_last_user", JSON.stringify(session.user));
+          } catch {}
+        } else if (!hasLocalSession) {
+          setUser(null);
+        }
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.warn("[AuthContext] getSession offline fallback:", err.message);
+        setLoading(false);
+      });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+      if (session?.user) {
+        setUser(session.user);
+        try {
+          localStorage.setItem("cars_last_user", JSON.stringify(session.user));
+        } catch {}
+      }
       setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => subscription?.unsubscribe?.();
   }, []);
+
+  const loginOffline = () => {
+    const offlineUser = {
+      id: "offline-user",
+      email: "offline@cars.local",
+      user_metadata: { name: "Offline User" },
+      isOffline: true,
+    };
+    try {
+      localStorage.setItem("cars_offline_session", JSON.stringify(offlineUser));
+      localStorage.setItem("cars_last_user", JSON.stringify(offlineUser));
+    } catch {}
+    setUser(offlineUser);
+    setLoading(false);
+    return { success: true };
+  };
 
   const login = async (email, password) => {
     setError(null);
@@ -51,6 +106,9 @@ export function AuthProvider({ children }) {
       }
 
       setUser(data.user);
+      try {
+        localStorage.setItem("cars_last_user", JSON.stringify(data.user));
+      } catch {}
       setLoading(false);
 
       // Kick off IndexedDB populate in the background — does NOT block login redirect
@@ -65,7 +123,10 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async () => {
-    if (!supabase) return;
+    try {
+      localStorage.removeItem("cars_last_user");
+      localStorage.removeItem("cars_offline_session");
+    } catch {}
 
     try {
       const { getPendingCount } = await import("@/lib/local-repo");
@@ -94,12 +155,14 @@ export function AuthProvider({ children }) {
       // local cache cleanup optional
     }
 
-    await supabase.auth.signOut();
+    if (supabase) {
+      await supabase.auth.signOut().catch(() => {});
+    }
     setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, error, login, logout, populateDone }}>
+    <AuthContext.Provider value={{ user, loading, error, login, loginOffline, logout, populateDone }}>
       {children}
     </AuthContext.Provider>
   );
