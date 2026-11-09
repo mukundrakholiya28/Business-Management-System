@@ -380,7 +380,7 @@ async function serverDeleteBill(billId) {
 }
 
 /** Strip IndexedDB-only metadata fields before uploading to Supabase. */
-function toServerPayload(payload, table, currentUserId) {
+export function toServerPayload(payload, table, currentUserId) {
   if (!payload) return payload;
 
   const {

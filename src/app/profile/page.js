@@ -5,12 +5,14 @@ import Navbar from "@/components/Navbar";
 import { useProtectedRoute, useAuth } from "@/context/AuthContext";
 import { loadProfile, saveProfile } from "@/lib/data-layer";
 import { PageSkeleton } from "@/components/ui";
-import { Building2, CreditCard, FileText, Phone, Mail, MapPin, Save } from "lucide-react";
+import { Building2, CreditCard, FileText, Phone, Mail, MapPin, Save, HardDrive } from "lucide-react";
+import BackupRestoreSection from "@/components/BackupRestoreSection";
 
 const SECTIONS = [
-  { id: "company",  label: "Company",        icon: Building2 },
-  { id: "payment",  label: "Payment & Bank", icon: CreditCard },
-  { id: "invoice",  label: "Invoice",        icon: FileText   },
+  { id: "company",  label: "Company",          icon: Building2 },
+  { id: "payment",  label: "Payment & Bank",   icon: CreditCard },
+  { id: "invoice",  label: "Invoice",          icon: FileText   },
+  { id: "backup",   label: "Backup & Restore", icon: HardDrive  },
 ];
 
 export default function ProfilePage() {
@@ -70,14 +72,16 @@ export default function ProfilePage() {
                 Company details, payment info and invoice defaults — used on printed invoices and bills
               </p>
             </div>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="flat-btn-primary disabled:opacity-50"
-            >
-              <Save size={14} strokeWidth={1.5} />
-              {saving ? "Saving…" : "Save Changes"}
-            </button>
+            {activeSection !== "backup" && (
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="flat-btn-primary disabled:opacity-50"
+              >
+                <Save size={14} strokeWidth={1.5} />
+                {saving ? "Saving…" : "Save Changes"}
+              </button>
+            )}
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
@@ -209,6 +213,16 @@ export default function ProfilePage() {
                     </div>
                   </div>
                 </>
+              )}
+
+              {/* ── Backup & Restore ── */}
+              {activeSection === "backup" && (
+                <BackupRestoreSection
+                  onProfileUpdated={() => {
+                    loadProfile().then(setProfile).catch(() => {});
+                    showToast("System data restored successfully");
+                  }}
+                />
               )}
 
             </div>
