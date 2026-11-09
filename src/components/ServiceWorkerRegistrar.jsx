@@ -15,7 +15,9 @@ export default function ServiceWorkerRegistrar() {
     navigator.serviceWorker
       .register("/sw.js", { scope: "/" })
       .then((reg) => {
-        console.log("[SW] Registered, scope:", reg.scope);
+        // Check for updates automatically whenever the app mounts
+        reg.update();
+        console.log("[SW] Registered & auto-update checked, scope:", reg.scope);
       })
       .catch((err) => {
         console.warn("[SW] Registration failed:", err);
