@@ -16,6 +16,9 @@ import {
   getCurrentFinancialYear,
   getAvailableFinancialYears,
   filterBillsByFinancialYear,
+  getSelectedFinancialYear,
+  setSelectedFinancialYear,
+  FY_CHANGE_EVENT,
 } from "@/lib/diwali-calendar";
 import DiwaliYearSelector from "@/components/DiwaliYearSelector";
 
@@ -69,7 +72,20 @@ export default function DashboardPage() {
   const [bills, setBills]         = useState([]);
   const [loadingData, setLoadingData] = useState(true);
   const [error, setError]         = useState(null);
-  const [selectedYear, setSelectedYear] = useState(() => getCurrentFinancialYear().key);
+  const [selectedYear, setSelectedYear] = useState(() => getSelectedFinancialYear());
+
+  useEffect(() => {
+    function onFYChanged(e) {
+      if (e?.detail) setSelectedYear(e.detail);
+    }
+    window.addEventListener(FY_CHANGE_EVENT, onFYChanged);
+    return () => window.removeEventListener(FY_CHANGE_EVENT, onFYChanged);
+  }, []);
+
+  const handleYearChange = (newYear) => {
+    setSelectedFinancialYear(newYear);
+    setSelectedYear(newYear);
+  };
 
   const fetchData = useCallback(() => {
     let mounted = true;
@@ -166,7 +182,7 @@ export default function DashboardPage() {
             </div>
             <DiwaliYearSelector
               selectedYear={selectedYear}
-              onChange={setSelectedYear}
+              onChange={handleYearChange}
               availableYears={availableYears}
             />
           </div>

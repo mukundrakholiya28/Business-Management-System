@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
-import { ChevronDown, Calendar, Sparkles } from "lucide-react";
+import { ChevronDown, Calendar } from "lucide-react";
 
 /**
  * DiwaliYearSelector
@@ -46,7 +46,6 @@ export default function DiwaliYearSelector({
         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 shadow-sm transition-all focus:outline-none"
         title="Switch Financial Year (FY)"
       >
-        <Sparkles size={12} className="text-amber-500 shrink-0" />
         <span>{displayLabel}</span>
         {isCurrentYear && selectedYear !== "all" && (
           <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-1.5 py-0.2 rounded-full">

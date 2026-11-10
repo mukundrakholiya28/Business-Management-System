@@ -27,6 +27,9 @@ import {
   getFinancialYearForDate,
   getCurrentFinancialYear,
   getAvailableFinancialYears,
+  getSelectedFinancialYear,
+  setSelectedFinancialYear,
+  FY_CHANGE_EVENT,
 } from "@/lib/diwali-calendar";
 import DiwaliYearSelector from "@/components/DiwaliYearSelector";
 import {
@@ -94,7 +97,27 @@ function BillingPage() {
   const { populateDone }  = useAuth();
   const searchParams = useSearchParams();
   const yearQueryParam = searchParams.get("year");
-  const [selectedYear, setSelectedYear] = useState(() => yearQueryParam || getCurrentFinancialYear().key);
+  const [selectedYear, setSelectedYear] = useState(() => yearQueryParam || getSelectedFinancialYear());
+
+  useEffect(() => {
+    if (yearQueryParam) {
+      setSelectedYear(yearQueryParam);
+      setSelectedFinancialYear(yearQueryParam);
+    }
+  }, [yearQueryParam]);
+
+  useEffect(() => {
+    function onFYChanged(e) {
+      if (e?.detail) setSelectedYear(e.detail);
+    }
+    window.addEventListener(FY_CHANGE_EVENT, onFYChanged);
+    return () => window.removeEventListener(FY_CHANGE_EVENT, onFYChanged);
+  }, []);
+
+  const handleYearChange = (newYear) => {
+    setSelectedFinancialYear(newYear);
+    setSelectedYear(newYear);
+  };
   const [bills, setBills] = useState([]);
   const [billItems, setBillItems] = useState([]);
   const [customers, setCustomers] = useState([]);
@@ -331,7 +354,7 @@ function BillingPage() {
             <div className="flex items-center gap-2">
               <DiwaliYearSelector
                 selectedYear={selectedYear}
-                onChange={setSelectedYear}
+                onChange={handleYearChange}
                 availableYears={availableYears}
               />
               <button onClick={openNewBillForm} className="flat-btn-primary">

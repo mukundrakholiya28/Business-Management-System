@@ -231,3 +231,39 @@ export function filterBillsByFinancialYear(bills, fyKey) {
   });
 }
 
+// ─── Session-persisted Financial Year Selection ──────────────────────────────
+export const FY_SESSION_STORAGE_KEY = "cars_selected_fy";
+export const FY_CHANGE_EVENT = "cars_fy_changed";
+
+/**
+ * Returns the currently selected financial year from sessionStorage,
+ * or defaults to the currently active financial year.
+ * Retains until app/window is closed or user changes it.
+ */
+export function getSelectedFinancialYear() {
+  if (typeof window !== "undefined") {
+    try {
+      const saved = sessionStorage.getItem(FY_SESSION_STORAGE_KEY);
+      if (saved) return saved;
+    } catch {}
+  }
+  return getCurrentFinancialYear().key;
+}
+
+/**
+ * Updates the selected financial year in sessionStorage and notifies all active pages.
+ */
+export function setSelectedFinancialYear(yearKey) {
+  if (typeof window !== "undefined") {
+    try {
+      if (yearKey) {
+        sessionStorage.setItem(FY_SESSION_STORAGE_KEY, yearKey);
+      } else {
+        sessionStorage.removeItem(FY_SESSION_STORAGE_KEY);
+      }
+      window.dispatchEvent(new CustomEvent(FY_CHANGE_EVENT, { detail: yearKey }));
+    } catch {}
+  }
+}
+
+
