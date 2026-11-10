@@ -286,7 +286,7 @@ export default function FinancePage() {
         <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 py-7">
 
           {/* Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6 animate-fade-in">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6 relative z-30 animate-fade-in">
             <div>
               <h1 className="text-xl font-semibold text-gray-900">Finance</h1>
               <p className="text-xs text-gray-400 mt-1">Revenue & billing analytics for your workshop</p>

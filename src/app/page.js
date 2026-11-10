@@ -157,7 +157,7 @@ export default function DashboardPage() {
         <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 py-7">
 
           {/* Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-7 animate-fade-in">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-7 relative z-30 animate-fade-in">
             <div>
               <h1 className="text-xl font-semibold text-gray-900">Dashboard</h1>
               <p className="text-xs text-gray-400 mt-1">
@@ -208,7 +208,7 @@ export default function DashboardPage() {
                 />
               </div>
               {recentBills.length === 0 ? (
-                <p className="text-xs text-gray-400 py-8 text-center">No invoices for this Diwali year.</p>
+                <p className="text-xs text-gray-400 py-8 text-center">No invoices for this financial year.</p>
               ) : (
                 <table className="w-full text-sm">
                   <thead>

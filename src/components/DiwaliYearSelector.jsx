@@ -14,6 +14,7 @@ export default function DiwaliYearSelector({
   availableYears = [],
   showAllOption = true,
   className = "",
+  align = "right",
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef(null);
@@ -33,17 +34,17 @@ export default function DiwaliYearSelector({
     ? "All Time"
     : currentSelection
       ? currentSelection.label
-      : selectedYear || "Select Year";
+      : selectedYear || "Select FY";
 
   const isCurrentYear = currentSelection && availableYears[0]?.key === currentSelection.key;
 
   return (
-    <div className={`relative inline-block text-left ${className}`} ref={containerRef}>
+    <div className={`relative inline-block text-left ${isOpen ? "z-50" : "z-10"} ${className}`} ref={containerRef}>
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 shadow-sm transition-all focus:outline-none"
-        title="Switch Diwali accounting year"
+        title="Switch Financial Year (FY)"
       >
         <Sparkles size={12} className="text-amber-500 shrink-0" />
         <span>{displayLabel}</span>
@@ -56,10 +57,10 @@ export default function DiwaliYearSelector({
       </button>
 
       {isOpen && (
-        <div className="absolute left-0 mt-1.5 w-52 rounded-xl bg-white shadow-xl border border-gray-100 py-1.5 z-50 text-xs animate-in fade-in zoom-in-95 duration-100">
+        <div className={`absolute ${align === "left" ? "left-0" : "right-0"} mt-1.5 w-56 rounded-xl bg-white shadow-2xl border border-gray-100 py-1.5 z-[999] text-xs animate-in fade-in zoom-in-95 duration-100`}>
           <div className="px-3 py-1 border-b border-gray-100 mb-1">
             <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">
-              Diwali Accounting Year
+              Financial Year (FY)
             </span>
           </div>
 

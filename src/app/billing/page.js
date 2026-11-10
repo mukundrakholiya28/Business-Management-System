@@ -321,7 +321,7 @@ function BillingPage() {
       <main className="flex-1">
         <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 py-7">
           {/* Header */}
-          <div className="flex flex-wrap items-start justify-between gap-3 mb-6 animate-fade-in">
+          <div className="flex flex-wrap items-start justify-between gap-3 mb-6 relative z-30 animate-fade-in">
             <div>
               <h1 className="text-xl font-semibold text-gray-900">Billing</h1>
               <p className="text-xs text-gray-400 mt-1">
@@ -341,7 +341,7 @@ function BillingPage() {
           </div>
 
           {/* Toolbar */}
-          <div className="flex flex-wrap items-end gap-3 mb-5 animate-fade-in">
+          <div className="flex flex-wrap items-end gap-3 mb-5 relative z-10 animate-fade-in">
             <div className="flex-1 min-w-[200px] relative">
               <label className="flat-label block mb-1">Search</label>
               <Search size={15} strokeWidth={1.5} className="absolute left-3 bottom-[11px] text-gray-400 pointer-events-none" />

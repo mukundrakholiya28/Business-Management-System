@@ -23,7 +23,7 @@ export default function DiwaliSettingsSection({ onMigrated }) {
       // Allow re-running
       await setAppSetting("diwali_migration_v1_done", false);
       await migrateExistingBillsToDiwaliYears(db);
-      setMsg({ type: "success", text: "All past invoices successfully re-sequenced starting from INV-1 for each Diwali year!" });
+      setMsg({ type: "success", text: "All past invoices successfully re-sequenced starting from INV-1 for each financial year!" });
       if (onMigrated) onMigrated();
     } catch (err) {
       setMsg({ type: "error", text: err.message });
@@ -66,9 +66,9 @@ export default function DiwaliSettingsSection({ onMigrated }) {
       <div className="p-4 rounded-xl bg-white border border-gray-100 space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-semibold text-gray-900">Diwali Cycle Invoice Re-sequencing</h3>
+            <h3 className="text-sm font-semibold text-gray-900">Financial Year (FY) Invoice Re-sequencing</h3>
             <p className="text-xs text-gray-500 mt-0.5">
-              Partitions historical invoices into their respective Diwali years and resets numbering to 1 for each year.
+              Partitions historical invoices into their respective financial years and resets numbering to 1 for each year.
             </p>
           </div>
           <button
@@ -99,7 +99,7 @@ export default function DiwaliSettingsSection({ onMigrated }) {
       {/* Schedule Table */}
       <div>
         <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">
-          Diwali / Vikram Samvat Accounting Schedule
+          Financial Year (Diwali Cycle) Schedule
         </h3>
         <div className="border border-gray-100 rounded-xl overflow-hidden text-xs">
           <table className="w-full text-left">

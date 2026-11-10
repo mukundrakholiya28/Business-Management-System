@@ -13,7 +13,7 @@ const SECTIONS = [
   { id: "company",  label: "Company",          icon: Building2 },
   { id: "payment",  label: "Payment & Bank",   icon: CreditCard },
   { id: "invoice",  label: "Invoice",          icon: FileText   },
-  { id: "diwali",   label: "Diwali Year",      icon: Sparkles   },
+  { id: "diwali",   label: "Financial Year (FY)", icon: Sparkles   },
   { id: "backup",   label: "Backup & Restore", icon: HardDrive  },
 ];
 
