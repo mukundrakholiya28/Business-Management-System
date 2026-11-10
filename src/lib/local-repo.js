@@ -21,7 +21,7 @@ import {
   pendingRow,
   syncedRow,
 } from "./local-db";
-import { normalizePhoneNumber, generateId } from "./helpers";
+import { normalizePhoneNumber, generateId, isValidUUID } from "./helpers";
 import { getFinancialYearForDate } from "./diwali-calendar";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -133,7 +133,8 @@ export async function loadWorkshopData() {
   requireBrowser();
   const db = getDb();
 
-  // Run cleanup and Diwali cycle migrations asynchronously in background
+  // Run cleanup, healing, and Diwali cycle migrations asynchronously in background
+  healNonUuidLocalRecords(db).catch(() => {});
   migrateExistingBillsToDiwaliYears(db).catch(() => {});
   cleanupDuplicateBills(db).catch(() => {});
   cleanupOrphanQueueOps(db).catch(() => {});
@@ -246,7 +247,7 @@ export async function saveCustomerWithVehicles({ customer, vehicles, userId }) {
     }
   }
 
-  const customerId = customer.id || newId();
+  const customerId = isValidUUID(customer.id) ? customer.id : newId();
   const customerRow = pendingRow({
     id:           customerId,
     user_id:      userId,
@@ -266,7 +267,7 @@ export async function saveCustomerWithVehicles({ customer, vehicles, userId }) {
 
     for (let i = 0; i < validVehicles.length; i++) {
       const v          = validVehicles[i];
-      const vehicleId  = v.id || newId();
+      const vehicleId  = isValidUUID(v.id) ? v.id : newId();
       const vehicleRow = pendingRow({
         id:             vehicleId,
         customer_id:    customerId,
@@ -520,7 +521,7 @@ export async function saveBillWithItems({ bill, items, isEditing, userId }) {
     bill_number = topBill + 1;
   }
 
-  const billId = isEditing ? bill.id : (bill.id || newId());
+  const billId = isEditing ? bill.id : (isValidUUID(bill.id) ? bill.id : newId());
   const existingBill = isEditing ? (await db.bills.get(billId) || {}) : {};
 
   const billRow = pendingRow({
@@ -549,9 +550,10 @@ export async function saveBillWithItems({ bill, items, isEditing, userId }) {
   });
 
   const itemRows = cleanItems.map((item, i) => {
-    const existingItemId = items?.[i]?.id || newId();
+    const existingItemId = items?.[i]?.id;
+    const itemId = isValidUUID(existingItemId) ? existingItemId : newId();
     return pendingRow({
-      id:          existingItemId,
+      id:          itemId,
       bill_id:     billId,
       user_id:     userId,
       description: item.description,
@@ -785,6 +787,7 @@ export async function markQueueOpProcessing(seq) {
 
 export async function resetFailedOps() {
   const db = getDb();
+  await healNonUuidLocalRecords(db);
   await db.sync_queue
     .where("status")
     .equals(QUEUE_STATUS.FAILED)
@@ -940,6 +943,210 @@ export async function cleanupOrphanQueueOps(db = getDb()) {
     }
   } catch (err) {
     console.warn("[local-repo] cleanupOrphanQueueOps error:", err);
+  }
+}
+
+/**
+ * Automatically detects and repairs any non-UUID IDs (e.g. legacy "id-xxx" IDs)
+ * in Dexie tables (bills, bill_items, customers, vehicles) and sync_queue.
+ * Ensures local offline records can be synced to Supabase PostgreSQL UUID columns.
+ */
+export async function healNonUuidLocalRecords(db = getDb()) {
+  try {
+    if (!db) return;
+
+    // 1. Repair customers with non-UUID IDs
+    const allCustomers = await db.customers.toArray();
+    const custMap = new Map(); // oldId -> newUuid
+    for (const c of allCustomers) {
+      if (!isValidUUID(c.id)) {
+        const newCustId = newId();
+        custMap.set(c.id, newCustId);
+        await db.customers.put({
+          ...c,
+          id: newCustId,
+          sync_status: SYNC_STATUS.PENDING,
+        });
+        await db.customers.delete(c.id);
+      }
+    }
+
+    // 2. Repair vehicles with non-UUID IDs
+    const allVehicles = await db.vehicles.toArray();
+    const vehMap = new Map(); // oldId -> newUuid
+    for (const v of allVehicles) {
+      let changed = false;
+      let nextVehId = v.id;
+      let nextCustId = v.customer_id;
+
+      if (!isValidUUID(v.id)) {
+        nextVehId = newId();
+        vehMap.set(v.id, nextVehId);
+        changed = true;
+      }
+      if (custMap.has(v.customer_id)) {
+        nextCustId = custMap.get(v.customer_id);
+        changed = true;
+      }
+
+      if (changed) {
+        await db.vehicles.put({
+          ...v,
+          id: nextVehId,
+          customer_id: nextCustId,
+          sync_status: SYNC_STATUS.PENDING,
+        });
+        if (nextVehId !== v.id) {
+          await db.vehicles.delete(v.id);
+        }
+      }
+    }
+
+    // 3. Repair bills with non-UUID IDs (and re-map customer_id / vehicle_id if needed)
+    const allBills = await db.bills.toArray();
+    const billMap = new Map(); // oldId -> newUuid
+    for (const b of allBills) {
+      let changed = false;
+      let nextBillId = b.id;
+      let nextCustId = b.customer_id;
+      let nextVehId = b.vehicle_id;
+
+      if (!isValidUUID(b.id)) {
+        nextBillId = newId();
+        billMap.set(b.id, nextBillId);
+        changed = true;
+      }
+      if (custMap.has(b.customer_id)) {
+        nextCustId = custMap.get(b.customer_id);
+        changed = true;
+      }
+      if (vehMap.has(b.vehicle_id)) {
+        nextVehId = vehMap.get(b.vehicle_id);
+        changed = true;
+      }
+
+      if (changed) {
+        await db.bills.put({
+          ...b,
+          id: nextBillId,
+          customer_id: nextCustId,
+          vehicle_id: nextVehId,
+          sync_status: SYNC_STATUS.PENDING,
+        });
+        if (nextBillId !== b.id) {
+          await db.bills.delete(b.id);
+        }
+      }
+    }
+
+    // 4. Repair bill_items (re-parent to new bill_id if bill was mapped, ensure item.id is UUID)
+    const allItems = await db.bill_items.toArray();
+    for (const item of allItems) {
+      let changed = false;
+      let nextBillId = item.bill_id;
+      let nextItemId = item.id;
+
+      if (billMap.has(item.bill_id)) {
+        nextBillId = billMap.get(item.bill_id);
+        changed = true;
+      }
+      if (!isValidUUID(item.id)) {
+        nextItemId = newId();
+        changed = true;
+      }
+
+      if (changed) {
+        await db.bill_items.put({
+          ...item,
+          id: nextItemId,
+          bill_id: nextBillId,
+          sync_status: SYNC_STATUS.PENDING,
+        });
+        if (nextItemId !== item.id) {
+          await db.bill_items.delete(item.id);
+        }
+      }
+    }
+
+    // 5. Repair sync_queue operations
+    const queueOps = await db.sync_queue.toArray();
+    for (const op of queueOps) {
+      let changed = false;
+      let nextEntityId = op.entity_id;
+      let nextPayload = op.payload ? { ...op.payload } : op.payload;
+
+      if (op.entity_type === "bills") {
+        if (billMap.has(op.entity_id)) {
+          nextEntityId = billMap.get(op.entity_id);
+          changed = true;
+        } else if (!isValidUUID(op.entity_id)) {
+          const freshId = newId();
+          billMap.set(op.entity_id, freshId);
+          nextEntityId = freshId;
+          changed = true;
+        }
+
+        if (nextPayload && nextPayload.bill) {
+          if (billMap.has(nextPayload.bill.id)) {
+            nextPayload.bill = { ...nextPayload.bill, id: billMap.get(nextPayload.bill.id) };
+            changed = true;
+          } else if (!isValidUUID(nextPayload.bill.id)) {
+            nextPayload.bill = { ...nextPayload.bill, id: nextEntityId };
+            changed = true;
+          }
+
+          if (custMap.has(nextPayload.bill.customer_id)) {
+            nextPayload.bill = { ...nextPayload.bill, customer_id: custMap.get(nextPayload.bill.customer_id) };
+            changed = true;
+          }
+          if (vehMap.has(nextPayload.bill.vehicle_id)) {
+            nextPayload.bill = { ...nextPayload.bill, vehicle_id: vehMap.get(nextPayload.bill.vehicle_id) };
+            changed = true;
+          }
+        }
+      } else if (op.entity_type === "customers") {
+        if (custMap.has(op.entity_id)) {
+          nextEntityId = custMap.get(op.entity_id);
+          changed = true;
+        }
+        if (nextPayload && custMap.has(nextPayload.id)) {
+          nextPayload.id = custMap.get(nextPayload.id);
+          changed = true;
+        }
+      } else if (op.entity_type === "vehicles") {
+        if (vehMap.has(op.entity_id)) {
+          nextEntityId = vehMap.get(op.entity_id);
+          changed = true;
+        }
+        if (nextPayload) {
+          if (vehMap.has(nextPayload.id)) {
+            nextPayload.id = vehMap.get(nextPayload.id);
+            changed = true;
+          }
+          if (custMap.has(nextPayload.customer_id)) {
+            nextPayload.customer_id = custMap.get(nextPayload.customer_id);
+            changed = true;
+          }
+        }
+      }
+
+      // If this op failed due to UUID syntax error or is in failed state, reset it so it can sync!
+      const isUuidErr = op.error_message && (
+        op.error_message.toLowerCase().includes("syntax for type uuid") ||
+        op.error_message.includes("22P02")
+      );
+      if (isUuidErr || changed || op.status === QUEUE_STATUS.FAILED) {
+        await db.sync_queue.update(op._seq, {
+          entity_id: nextEntityId,
+          payload: nextPayload,
+          status: QUEUE_STATUS.PENDING,
+          retry_count: 0,
+          error_message: null,
+        });
+      }
+    }
+  } catch (err) {
+    console.warn("[healNonUuidLocalRecords] Warning:", err);
   }
 }
 

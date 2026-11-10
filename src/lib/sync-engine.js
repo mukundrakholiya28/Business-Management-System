@@ -26,7 +26,9 @@ import {
   getFailedCount,
   setAppSetting,
   getAppSetting,
+  healNonUuidLocalRecords,
 } from "./local-repo";
+import { isValidUUID } from "./helpers";
 import { getFinancialYearForDate } from "./diwali-calendar";
 
 
@@ -174,6 +176,7 @@ export async function runSync(opts = {}) {
 // ─── PUSH ────────────────────────────────────────────────────────────────────
 
 async function pushLocalOps() {
+  await healNonUuidLocalRecords().catch(() => {});
   const ops = await getPendingQueueOps();
   if (ops.length === 0) return;
 
@@ -254,10 +257,15 @@ async function executePushOp(op, currentUserId) {
           }))
       : null;
 
+    const candidateBillId = entity_id || effectiveBill.id;
+    const safeBillId = isValidUUID(candidateBillId) ? candidateBillId : null;
+    const safeCustomerId = isValidUUID(effectiveBill.customer_id) ? effectiveBill.customer_id : null;
+    const safeVehicleId = isValidUUID(effectiveBill.vehicle_id) ? effectiveBill.vehicle_id : null;
+
     const rpcParams = {
-      p_bill_id:         entity_id || effectiveBill.id || null,
-      p_customer_id:     effectiveBill.customer_id,
-      p_vehicle_id:      effectiveBill.vehicle_id,
+      p_bill_id:         safeBillId,
+      p_customer_id:     safeCustomerId,
+      p_vehicle_id:      safeVehicleId,
       p_kms_run:         effectiveBill.kms_run ? Number(effectiveBill.kms_run) : null,
       p_subtotal:        Number(effectiveBill.subtotal || 0),
       p_tax_amount:      Number(effectiveBill.tax_amount || 0),
@@ -308,6 +316,10 @@ async function executePushOp(op, currentUserId) {
           .where("bill_id")
           .equals(entity_id)
           .modify({ bill_id: savedBill.id, sync_status: SYNC_STATUS.SYNCED });
+        await db.sync_queue
+          .where("entity_id")
+          .equals(entity_id)
+          .modify({ entity_id: savedBill.id });
       } else {
         const localBill = await db.bills.get(entity_id);
         if (localBill) {
@@ -330,8 +342,10 @@ async function executePushOp(op, currentUserId) {
 
   // ── Generic table operations ───────────────────────────────────────────────
   if (operation === QUEUE_OP.DELETE) {
-    const { error } = await supabase.from(table).delete().eq("id", entity_id);
-    if (error && !error.message.includes("not found")) throw new Error(error.message);
+    if (isValidUUID(entity_id)) {
+      const { error } = await supabase.from(table).delete().eq("id", entity_id);
+      if (error && !error.message.includes("not found")) throw new Error(error.message);
+    }
 
     // Mark local row as synced with deletion confirmed
     const db = getDb();
@@ -403,6 +417,11 @@ async function executePushOp(op, currentUserId) {
  * Cascade-deletes a bill and its items from Supabase (mirrors deleteBill in workshop-data.js).
  */
 async function serverDeleteBill(billId) {
+  if (!isValidUUID(billId)) {
+    // Non-UUID bill was local-only, never existed on server
+    return;
+  }
+
   // Delete items first (FK constraint)
   const { error: itemsErr } = await supabase
     .from("bill_items")
@@ -462,15 +481,18 @@ export function toServerPayload(payload, table, currentUserId) {
     serverPayload.user_id = currentUserId;
   }
 
-  // Prevent Postgres UUID syntax error (22P02) on empty strings
-  if (serverPayload.user_id === "" || serverPayload.user_id === undefined) {
+  // Prevent Postgres UUID syntax error (22P02) on invalid UUIDs or empty strings
+  if (serverPayload.user_id && !isValidUUID(serverPayload.user_id)) {
     delete serverPayload.user_id;
   }
-  if (serverPayload.customer_id === "") {
+  if (serverPayload.customer_id && !isValidUUID(serverPayload.customer_id)) {
     delete serverPayload.customer_id;
   }
-  if (serverPayload.vehicle_id === "") {
+  if (serverPayload.vehicle_id && !isValidUUID(serverPayload.vehicle_id)) {
     delete serverPayload.vehicle_id;
+  }
+  if (serverPayload.id && !isValidUUID(serverPayload.id)) {
+    delete serverPayload.id;
   }
 
   return serverPayload;

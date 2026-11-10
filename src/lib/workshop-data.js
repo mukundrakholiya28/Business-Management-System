@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { generateId, normalizePhoneNumber } from "@/lib/helpers";
+import { generateId, normalizePhoneNumber, isValidUUID } from "@/lib/helpers";
 import { getFinancialYearForDate } from "@/lib/diwali-calendar";
 
 export function isSupabaseReady() {
@@ -43,7 +43,7 @@ async function fetchAllInBatches(table, orderCol = "created_at", ascending = fal
  * Always guarantees 100% complete items list directly from the database.
  */
 export async function fetchBillItemsByBillId(billId) {
-  if (!isSupabaseReady() || !billId) return [];
+  if (!isSupabaseReady() || !billId || !isValidUUID(billId)) return [];
   const { data, error } = await supabase
     .from("bill_items")
     .select("*")
@@ -410,10 +410,14 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
   console.log("Saving bill via secure transaction RPC...");
 
   const fy = bill.financial_year || getFinancialYearForDate(bill.created_at || new Date()).key;
+  const safeBillId = isValidUUID(bill.id) ? bill.id : null;
+  const safeCustomerId = isValidUUID(customerId) ? customerId : null;
+  const safeVehicleId = isValidUUID(vehicleId) ? vehicleId : null;
+
   const rpcParams = {
-    p_bill_id:         isEditing ? bill.id : (bill.id || null),
-    p_customer_id:     customerId,
-    p_vehicle_id:      vehicleId,
+    p_bill_id:         safeBillId,
+    p_customer_id:     safeCustomerId,
+    p_vehicle_id:      safeVehicleId,
     p_kms_run:         bill.kms_run ? Number(bill.kms_run) : null,
     p_subtotal:        subtotal,
     p_tax_amount:      tax_amount,
@@ -606,6 +610,10 @@ export async function deleteVehicle(vehicleId) {
 
 export async function deleteBill(billId) {
   if (!isSupabaseReady()) throw new Error("Supabase is not configured.");
+  if (!isValidUUID(billId)) {
+    // Non-UUID bill was created locally and never saved to Supabase
+    return true;
+  }
 
   // 1. Fetch the bill to get user_id and bill_number
   const { data: billData, error: fetchError } = await supabase

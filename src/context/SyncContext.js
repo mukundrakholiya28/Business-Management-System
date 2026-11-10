@@ -60,7 +60,11 @@ export function SyncProvider({ children, userId }) {
 
   const triggerSync = useCallback(async () => {
     try {
-      const { runSync } = await import("@/lib/sync-engine");
+      const [{ healNonUuidLocalRecords }, { runSync }] = await Promise.all([
+        import("@/lib/local-repo"),
+        import("@/lib/sync-engine"),
+      ]);
+      await healNonUuidLocalRecords?.();
       await runSync({ force: true });
     } catch (err) {
       console.warn("[SyncContext] triggerSync error:", err);
@@ -69,10 +73,11 @@ export function SyncProvider({ children, userId }) {
 
   const retryFailed = useCallback(async () => {
     try {
-      const [{ resetFailedOps, cleanupOrphanQueueOps }, { runSync }] = await Promise.all([
+      const [{ resetFailedOps, cleanupOrphanQueueOps, healNonUuidLocalRecords }, { runSync }] = await Promise.all([
         import("@/lib/local-repo"),
         import("@/lib/sync-engine"),
       ]);
+      await healNonUuidLocalRecords?.();
       await cleanupOrphanQueueOps();
       await resetFailedOps();
       await runSync({ force: true });

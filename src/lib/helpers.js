@@ -1,4 +1,13 @@
 // ─── Utility Helpers ───
+import { v4 as uuidv4, validate as uuidValidate } from "uuid";
+
+/**
+ * Validate whether a string is a valid RFC4122 UUID.
+ */
+export function isValidUUID(id) {
+  if (typeof id !== "string") return false;
+  return uuidValidate(id);
+}
 
 /**
  * Format a number as Indian Rupee currency
@@ -59,10 +68,10 @@ export function getStatusStyle(status) {
 }
 
 /**
- * Generate a unique ID (for demo mode)
+ * Generate a unique RFC4122 UUID v4
  */
 export function generateId() {
-  return "id-" + Math.random().toString(36).substring(2, 11);
+  return uuidv4();
 }
 
 /**
