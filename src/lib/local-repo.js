@@ -154,8 +154,7 @@ export async function loadWorkshopData() {
     return (b.bill_number ?? 0) - (a.bill_number ?? 0);
   });
 
-  // Deduplicate in-memory by (financial_year + bill_number) and ID
-  const seenBillKeys = new Set();
+  // Deduplicate in-memory by ID only — ensure ALL bills are included (Union)
   const seenBillIds = new Set();
   const bills = [];
   for (const b of rawBills) {
@@ -163,11 +162,6 @@ export async function loadWorkshopData() {
     seenBillIds.add(b.id);
 
     const fy = b.financial_year || getFinancialYearForDate(b.created_at).key;
-    if (b.bill_number != null && b.bill_number > 0) {
-      const key = `${fy}_${b.bill_number}`;
-      if (seenBillKeys.has(key)) continue;
-      seenBillKeys.add(key);
-    }
     bills.push({ ...b, financial_year: fy });
   }
 
@@ -900,22 +894,50 @@ export async function cleanupDuplicateBills(db = getDb()) {
       const duplicates = dupGroup.slice(1);
 
       for (const dup of duplicates) {
-        // Re-parent items or delete duplicate items
-        const canonicalItems = await db.bill_items.where("bill_id").equals(canonical.id).filter((i) => !i.is_deleted).toArray();
-        const dupItems = await db.bill_items.where("bill_id").equals(dup.id).filter((i) => !i.is_deleted).toArray();
+        // "first check whether its there or not if not then only make changes"
+        // Check whether dup is an identical clone vs a different distinct bill
+        const isIdentical =
+          dup.customer_id === canonical.customer_id &&
+          dup.vehicle_id === canonical.vehicle_id &&
+          Math.abs(Number(dup.total_amount || 0) - Number(canonical.total_amount || 0)) < 0.05;
 
-        if (canonicalItems.length === 0 && dupItems.length > 0) {
-          await db.bill_items.where("bill_id").equals(dup.id).modify({ bill_id: canonical.id });
+        if (isIdentical) {
+          // Re-parent items or delete duplicate items
+          const canonicalItems = await db.bill_items.where("bill_id").equals(canonical.id).filter((i) => !i.is_deleted).toArray();
+          const dupItems = await db.bill_items.where("bill_id").equals(dup.id).filter((i) => !i.is_deleted).toArray();
+
+          if (canonicalItems.length === 0 && dupItems.length > 0) {
+            await db.bill_items.where("bill_id").equals(dup.id).modify({ bill_id: canonical.id });
+          } else {
+            await db.bill_items.where("bill_id").equals(dup.id).delete();
+          }
+
+          // Remove queue ops for duplicate
+          await db.sync_queue.where("entity_id").equals(dup.id).delete();
+
+          // Delete duplicate bill row
+          await db.bills.delete(dup.id);
+          cleaned++;
         } else {
-          await db.bill_items.where("bill_id").equals(dup.id).delete();
+          // DIFFERENT BILL: TAKE UNION! NEVER DELETE!
+          // Re-sequence dup to next available bill number in that FY so it is NEVER lost!
+          const fy = canonical.financial_year || getFinancialYearForDate(canonical.created_at).key;
+          const allFyBills = await db.bills
+            .filter((b) => !b.is_deleted && (b.financial_year === fy || getFinancialYearForDate(b.created_at).key === fy))
+            .toArray();
+          const maxNum = allFyBills.reduce((max, b) => Math.max(max, Number(b.bill_number) || 0), 0);
+          const nextNum = maxNum + 1;
+
+          console.log(`[local-repo] Union conflict resolve: re-sequenced bill ${dup.id} from #${dup.bill_number} to #${nextNum}`);
+          await db.bills.update(dup.id, {
+            bill_number: nextNum,
+            sync_status: SYNC_STATUS.PENDING,
+            updated_at: new Date().toISOString(),
+          });
+          await enqueue("bills", dup.id, QUEUE_OP.UPDATE, {
+            bill: { ...dup, bill_number: nextNum },
+          });
         }
-
-        // Remove queue ops for duplicate
-        await db.sync_queue.where("entity_id").equals(dup.id).delete();
-
-        // Delete duplicate bill row
-        await db.bills.delete(dup.id);
-        cleaned++;
       }
     }
 

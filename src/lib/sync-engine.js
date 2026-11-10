@@ -524,21 +524,133 @@ async function pullCloudChanges(opts = {}) {
     await pullTable(tableName, orderCol, userId);
   }
 
-  // Reconcile deleted rows from server
-  await reconcileDeletedRows(db, "bills", userId);
+  // 1. Reconcile UNION for bills (take union, never delete local bills, ensure both sides have all bills)
+  await reconcileUnionBills(db, userId);
+
+  // 2. Reconcile deleted rows for customers and vehicles
   await reconcileDeletedRows(db, "customers", userId);
   await reconcileDeletedRows(db, "vehicles", userId);
+}
+
+/**
+ * Reconciles bills between local IndexedDB and Supabase cloud taking the UNION:
+ * - If a bill exists on the server but is not local: pulls it and its line items.
+ * - If a bill exists locally but is not on the server: NEVER deletes it! Re-queues it to push.
+ * - Guarantees all bills are included in both databases.
+ */
+async function reconcileUnionBills(db, userId) {
+  if (!supabase || !userId) return;
+  try {
+    // 1. Fetch all server bills in batches
+    let serverBills = [];
+    let from = 0;
+    while (true) {
+      const { data, error } = await supabase
+        .from("bills")
+        .select("id, bill_number, total_amount, updated_at, created_at, customer_id, vehicle_id, status, financial_year")
+        .eq("user_id", userId)
+        .order("bill_number", { ascending: true })
+        .range(from, from + 999);
+
+      if (error || !data) break;
+      serverBills = serverBills.concat(data);
+      if (data.length < 1000) break;
+      from += 1000;
+    }
+
+    const serverMap = new Map(serverBills.map((b) => [b.id, b]));
+
+    // 2. Fetch all local bills that are active
+    const localBills = await db.bills
+      .where("is_deleted")
+      .equals(0)
+      .toArray();
+
+    const localMap = new Map(localBills.map((b) => [b.id, b]));
+
+    // UNION PART A: "first check whether its there or not if not then only make changes"
+    // Server bills missing locally -> download them
+    for (const sb of serverBills) {
+      if (!localMap.has(sb.id)) {
+        const { data: fullBill } = await supabase
+          .from("bills")
+          .select("*")
+          .eq("id", sb.id)
+          .single();
+
+        if (fullBill) {
+          await mergeServerRow(db, "bills", fullBill, userId);
+          const { data: items } = await supabase
+            .from("bill_items")
+            .select("*")
+            .eq("bill_id", sb.id);
+
+          if (items && items.length > 0) {
+            for (const it of items) {
+              await mergeServerRow(db, "bill_items", it, userId);
+            }
+          }
+        }
+      }
+    }
+
+    // UNION PART B: Local bills missing on server -> NEVER delete them!
+    // Queue them to push to the cloud so both sides have the full union
+    for (const lb of localBills) {
+      if (!serverMap.has(lb.id)) {
+        const alreadyQueued = await db.sync_queue
+          .where("entity_id")
+          .equals(lb.id)
+          .first();
+
+        if (!alreadyQueued) {
+          console.log(`[sync-engine] Union sync: queuing local bill ${lb.id} (#${lb.bill_number}) to push to server`);
+          const items = await db.bill_items
+            .where("bill_id")
+            .equals(lb.id)
+            .filter((i) => !i.is_deleted)
+            .toArray();
+
+          await db.sync_queue.add({
+            op_id: `union-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            entity_type: "bills",
+            entity_id: lb.id,
+            operation: QUEUE_OP.CREATE,
+            payload: { bill: lb, items },
+            status: QUEUE_STATUS.PENDING,
+            created_at: new Date().toISOString(),
+            retry_count: 0,
+            last_attempted_at: null,
+            error_message: null,
+          });
+          await db.bills.update(lb.id, { sync_status: SYNC_STATUS.PENDING });
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[sync-engine] reconcileUnionBills error:", err.message);
+  }
 }
 
 async function reconcileDeletedRows(db, tableName, userId) {
   if (!supabase || !userId) return;
   try {
-    const { data: serverRows, error } = await supabase
-      .from(tableName)
-      .select("id")
-      .eq("user_id", userId);
+    let serverRows = [];
+    let from = 0;
+    while (true) {
+      const { data, error } = await supabase
+        .from(tableName)
+        .select("id")
+        .eq("user_id", userId)
+        .range(from, from + 999);
 
-    if (error || !serverRows) return;
+      if (error || !data) break;
+      serverRows = serverRows.concat(data);
+      if (data.length < 1000) break;
+      from += 1000;
+    }
+
+    if (serverRows.length === 0) return;
 
     const serverIdSet = new Set(serverRows.map((r) => r.id));
     const localRows = await db[tableName]
@@ -603,7 +715,20 @@ async function mergeServerRow(db, tableName, serverRow, userId) {
   const store = db[tableName];
   if (!store) return;
 
-  // Deduplication check for bills:
+  const localRow = await store.get(serverRow.id).catch(() => null);
+
+  // 1. "first check whether its there or not if not then only make changes"
+  if (
+    localRow &&
+    localRow.sync_status === SYNC_STATUS.SYNCED &&
+    localRow.updated_at === serverRow.updated_at &&
+    !localRow.is_deleted
+  ) {
+    // Record already exists locally with matching revision and state — no change needed
+    return;
+  }
+
+  // Deduplication & Conflict check for bills:
   if (tableName === "bills" && serverRow.bill_number) {
     const serverFy = serverRow.financial_year || getFinancialYearForDate(serverRow.created_at).key;
     const existingBills = await store
@@ -614,20 +739,57 @@ async function mergeServerRow(db, tableName, serverRow, userId) {
 
     for (const existing of existingBills) {
       if (existing.id !== serverRow.id) {
-        // Re-parent items to serverRow.id
-        await db.bill_items
-          .where("bill_id")
-          .equals(existing.id)
-          .modify({ bill_id: serverRow.id });
+        // Check if it's the SAME bill entity that had a temporary client ID
+        const isSameBill =
+          existing.customer_id === serverRow.customer_id &&
+          existing.vehicle_id === serverRow.vehicle_id &&
+          Math.abs(Number(existing.total_amount || 0) - Number(serverRow.total_amount || 0)) < 0.05;
 
-        // Clean up sync_queue for duplicate
-        await db.sync_queue
-          .where("entity_id")
-          .equals(existing.id)
-          .delete();
+        if (isSameBill) {
+          // Re-parent items to serverRow.id
+          await db.bill_items
+            .where("bill_id")
+            .equals(existing.id)
+            .modify({ bill_id: serverRow.id });
 
-        // Delete duplicate local bill
-        await store.delete(existing.id);
+          // Clean up sync_queue for duplicate
+          await db.sync_queue
+            .where("entity_id")
+            .equals(existing.id)
+            .delete();
+
+          // Delete temporary local placeholder
+          await store.delete(existing.id);
+        } else {
+          // CONFLICT: Two DIFFERENT bills share the same bill_number in this FY!
+          // Requirement: "make sure all bills get included i mean take union when conflict or syncing"
+          // TAKE UNION: NEVER DELETE! Re-sequence existing local bill to next available number
+          const allFyBills = await store
+            .filter((b) => !b.is_deleted && (b.financial_year === serverFy || getFinancialYearForDate(b.created_at).key === serverFy))
+            .toArray();
+          const maxNum = allFyBills.reduce((max, b) => Math.max(max, Number(b.bill_number) || 0), 0);
+          const nextNum = Math.max(maxNum + 1, (serverRow.bill_number || 0) + 1);
+
+          console.log(`[sync-engine] Union conflict: re-sequenced local bill ${existing.id} from #${existing.bill_number} to #${nextNum}`);
+          await store.update(existing.id, {
+            bill_number: nextNum,
+            sync_status: SYNC_STATUS.PENDING,
+            updated_at: new Date().toISOString(),
+          });
+
+          await db.sync_queue.add({
+            op_id: `union-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            entity_type: "bills",
+            entity_id: existing.id,
+            operation: QUEUE_OP.CREATE,
+            payload: { bill: { ...existing, bill_number: nextNum } },
+            status: QUEUE_STATUS.PENDING,
+            created_at: new Date().toISOString(),
+            retry_count: 0,
+            last_attempted_at: null,
+            error_message: null,
+          });
+        }
       }
     }
   }
@@ -644,8 +806,6 @@ async function mergeServerRow(db, tableName, serverRow, userId) {
       await store.delete(dup.id);
     }
   }
-
-  const localRow = await store.get(serverRow.id).catch(() => null);
 
   // If local row has un-synced pending changes, prefer local (optimistic)
   if (
