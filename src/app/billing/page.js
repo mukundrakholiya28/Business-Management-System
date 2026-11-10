@@ -24,6 +24,12 @@ import {
 } from "@/lib/data-layer";
 import { useReconnectReload } from "@/hooks/useReconnectReload";
 import {
+  getFinancialYearForDate,
+  getCurrentFinancialYear,
+  getAvailableFinancialYears,
+} from "@/lib/diwali-calendar";
+import DiwaliYearSelector from "@/components/DiwaliYearSelector";
+import {
   Plus,
   FileText,
   Trash2,
@@ -87,6 +93,8 @@ function BillingPage() {
   const { user, loading } = useProtectedRoute();
   const { populateDone }  = useAuth();
   const searchParams = useSearchParams();
+  const yearQueryParam = searchParams.get("year");
+  const [selectedYear, setSelectedYear] = useState(() => yearQueryParam || getCurrentFinancialYear().key);
   const [bills, setBills] = useState([]);
   const [billItems, setBillItems] = useState([]);
   const [customers, setCustomers] = useState([]);
@@ -101,6 +109,8 @@ function BillingPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [confirmDeleteBill, setConfirmDeleteBill] = useState(null);
   const [toast, setToast] = useState(null);
+
+  const availableYears = useMemo(() => getAvailableFinancialYears(bills), [bills]);
 
   const showToast = (message) => {
     setToast(message);
@@ -163,6 +173,10 @@ function BillingPage() {
   }
 
   const filteredBills = bills.filter((b) => {
+    if (selectedYear !== "all") {
+      const billFy = b.financial_year || getFinancialYearForDate(b.created_at).key;
+      if (billFy !== selectedYear) return false;
+    }
     if (statusFilter !== "all" && b.status !== statusFilter) return false;
     if (!billMatchesTimeFilter(b, timeFilter, customRange)) return false;
     if (searchQuery.trim()) {
@@ -314,9 +328,16 @@ function BillingPage() {
                 Manage invoices, filter records, and edit bills
               </p>
             </div>
-            <button onClick={openNewBillForm} className="flat-btn-primary">
-              <Plus size={15} strokeWidth={1.5} /> New Invoice
-            </button>
+            <div className="flex items-center gap-2">
+              <DiwaliYearSelector
+                selectedYear={selectedYear}
+                onChange={setSelectedYear}
+                availableYears={availableYears}
+              />
+              <button onClick={openNewBillForm} className="flat-btn-primary">
+                <Plus size={15} strokeWidth={1.5} /> New Invoice
+              </button>
+            </div>
           </div>
 
           {/* Toolbar */}
@@ -407,10 +428,15 @@ function BillingPage() {
                   </thead>
                   <tbody>
                     {filteredBills
-                      .sort((a, b) => b.bill_number - a.bill_number)
+                      .sort((a, b) => {
+                        const timeDiff = new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+                        if (timeDiff !== 0) return timeDiff;
+                        return (b.bill_number ?? 0) - (a.bill_number ?? 0);
+                      })
                       .map((bill) => {
                         const customer = customers.find((c) => c.id === bill.customer_id);
                         const vehicle = vehicles.find((v) => v.id === bill.vehicle_id);
+                        const billFy = bill.financial_year || getFinancialYearForDate(bill.created_at).key;
                         return (
                           <tr
                             key={bill.id}
@@ -418,7 +444,12 @@ function BillingPage() {
                             className="border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer"
                           >
                             <td className="py-3 px-5 font-medium text-gray-900 whitespace-nowrap">
-                              INV-{bill.bill_number}
+                              <span className="font-semibold">INV-{bill.bill_number}</span>
+                              {selectedYear === "all" && (
+                                <span className="ml-2 text-[10px] font-normal px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">
+                                  {billFy}
+                                </span>
+                              )}
                             </td>
                             <td className="py-3 px-5 text-gray-600 hidden sm:table-cell">
                               {customer?.name}
@@ -473,10 +504,15 @@ function BillingPage() {
               {/* Mobile view: Card List */}
               <div className="md:hidden space-y-3 animate-fade-in">
                 {filteredBills
-                  .sort((a, b) => b.bill_number - a.bill_number)
+                  .sort((a, b) => {
+                    const timeDiff = new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+                    if (timeDiff !== 0) return timeDiff;
+                    return (b.bill_number ?? 0) - (a.bill_number ?? 0);
+                  })
                   .map((bill) => {
                     const customer = customers.find((c) => c.id === bill.customer_id);
                     const vehicle = vehicles.find((v) => v.id === bill.vehicle_id);
+                    const billFy = bill.financial_year || getFinancialYearForDate(bill.created_at).key;
                     return (
                       <div
                         key={bill.id}
@@ -484,7 +520,14 @@ function BillingPage() {
                         className="flat-card flex flex-col gap-3 p-4 cursor-pointer hover:bg-gray-50 transition-colors"
                       >
                         <div className="flex items-center justify-between">
-                          <span className="font-semibold text-gray-900 text-sm">INV-{bill.bill_number}</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-semibold text-gray-900 text-sm">INV-{bill.bill_number}</span>
+                            {selectedYear === "all" && (
+                              <span className="text-[10px] font-normal px-1.5 py-0.2 rounded bg-gray-100 text-gray-500">
+                                {billFy}
+                              </span>
+                            )}
+                          </div>
                           <div onClick={(e) => e.stopPropagation()}>
                             <StatusSelect
                               value={bill.status}

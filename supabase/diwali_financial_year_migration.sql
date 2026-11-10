@@ -1,0 +1,205 @@
+-- ============================================================
+-- Migration: Diwali to Diwali Financial Year Accounting
+-- Run this in Supabase SQL Editor (Dashboard → SQL Editor)
+-- ============================================================
+
+-- 1. Add financial_year column to bills table if it doesn't exist
+ALTER TABLE bills ADD COLUMN IF NOT EXISTS financial_year TEXT;
+
+-- 2. Drop the old unique constraint on (user_id, bill_number) if it exists
+ALTER TABLE bills DROP CONSTRAINT IF EXISTS uq_bills_bill_number;
+ALTER TABLE bills DROP CONSTRAINT IF EXISTS uq_bills_fy_bill_number;
+
+-- 3. Backfill financial_year for all existing bills based on Diwali / Bestu Varas calendar dates
+UPDATE bills SET financial_year = CASE
+  WHEN created_at < '2021-11-05' THEN '2020-2021'
+  WHEN created_at >= '2021-11-05' AND created_at < '2022-10-25' THEN '2021-2022'
+  WHEN created_at >= '2022-10-25' AND created_at < '2023-11-13' THEN '2022-2023'
+  WHEN created_at >= '2023-11-13' AND created_at < '2024-11-01' THEN '2023-2024'
+  WHEN created_at >= '2024-11-01' AND created_at < '2025-10-21' THEN '2024-2025'
+  WHEN created_at >= '2025-10-21' AND created_at < '2026-11-09' THEN '2025-2026'
+  WHEN created_at >= '2026-11-09' AND created_at < '2027-10-30' THEN '2026-2027'
+  ELSE '2027-2028'
+END
+WHERE financial_year IS NULL;
+
+-- 4. Re-sequence existing bills sequentially starting from 1 for each (user_id, financial_year)
+WITH ranked_bills AS (
+  SELECT 
+    id, 
+    ROW_NUMBER() OVER (
+      PARTITION BY user_id, financial_year 
+      ORDER BY created_at ASC, bill_number ASC
+    ) as new_seq
+  FROM bills
+)
+UPDATE bills
+SET bill_number = ranked_bills.new_seq
+FROM ranked_bills
+WHERE bills.id = ranked_bills.id;
+
+-- 5. Add compound unique constraint on (user_id, financial_year, bill_number)
+ALTER TABLE bills ADD CONSTRAINT uq_bills_fy_bill_number UNIQUE (user_id, financial_year, bill_number);
+CREATE INDEX IF NOT EXISTS idx_bills_fy ON bills (user_id, financial_year);
+
+-- 6. Update save_bill_with_items RPC to support financial_year
+CREATE OR REPLACE FUNCTION save_bill_with_items(
+  p_bill_id UUID,
+  p_customer_id UUID,
+  p_vehicle_id UUID,
+  p_kms_run INTEGER,
+  p_subtotal NUMERIC,
+  p_tax_amount NUMERIC,
+  p_discount NUMERIC,
+  p_total_amount NUMERIC,
+  p_status bill_status,
+  p_payment_method TEXT,
+  p_paid_amount NUMERIC,
+  p_notes TEXT,
+  p_pdf_url TEXT,
+  p_payment_history JSONB,
+  p_created_at TIMESTAMPTZ,
+  p_items JSONB,
+  p_user_id UUID,
+  p_financial_year TEXT DEFAULT NULL
+) RETURNS JSONB AS $$
+DECLARE
+  v_bill_id UUID := p_bill_id;
+  v_bill_number INTEGER;
+  v_financial_year TEXT := p_financial_year;
+  v_bill_created_at TIMESTAMPTZ := COALESCE(p_created_at, NOW());
+  v_item RECORD;
+  v_response JSONB;
+  v_user_id UUID;
+BEGIN
+  -- Determine current user ID
+  IF auth.uid() IS NOT NULL THEN
+    v_user_id := auth.uid();
+  ELSE
+    v_user_id := p_user_id;
+  END IF;
+
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  -- Auto-determine financial_year from created_at if not passed
+  IF v_financial_year IS NULL OR v_financial_year = '' THEN
+    v_financial_year := CASE
+      WHEN v_bill_created_at < '2021-11-05' THEN '2020-2021'
+      WHEN v_bill_created_at >= '2021-11-05' AND v_bill_created_at < '2022-10-25' THEN '2021-2022'
+      WHEN v_bill_created_at >= '2022-10-25' AND v_bill_created_at < '2023-11-13' THEN '2022-2023'
+      WHEN v_bill_created_at >= '2023-11-13' AND v_bill_created_at < '2024-11-01' THEN '2023-2024'
+      WHEN v_bill_created_at >= '2024-11-01' AND v_bill_created_at < '2025-10-21' THEN '2024-2025'
+      WHEN v_bill_created_at >= '2025-10-21' AND v_bill_created_at < '2026-11-09' THEN '2025-2026'
+      WHEN v_bill_created_at >= '2026-11-09' AND v_bill_created_at < '2027-10-30' THEN '2026-2027'
+      ELSE '2027-2028'
+    END;
+  END IF;
+
+  -- Validate financial calculations on server-side only if valid items array is provided
+  IF p_items IS NOT NULL AND jsonb_array_length(p_items) > 0 THEN
+    DECLARE
+      v_calculated_subtotal NUMERIC := 0;
+      v_taxable_amount NUMERIC := 0;
+      v_item RECORD;
+    BEGIN
+      FOR v_item IN SELECT * FROM jsonb_to_recordset(p_items) AS x(
+        quantity NUMERIC,
+        unit_price NUMERIC
+      ) LOOP
+        v_calculated_subtotal := v_calculated_subtotal + (COALESCE(v_item.quantity, 0) * COALESCE(v_item.unit_price, 0));
+      END LOOP;
+      v_calculated_subtotal := ROUND(v_calculated_subtotal, 2);
+
+      IF COALESCE(p_discount, 0) > v_calculated_subtotal THEN
+        RAISE EXCEPTION 'Discount cannot exceed subtotal';
+      END IF;
+
+      IF ABS(COALESCE(p_subtotal, 0) - v_calculated_subtotal) > 0.05 THEN
+        RAISE EXCEPTION 'Invalid financial calculations: subtotal does not match sum of items';
+      END IF;
+
+      v_taxable_amount := GREATEST(0, v_calculated_subtotal - COALESCE(p_discount, 0));
+
+      IF ABS(COALESCE(p_total_amount, 0) - (v_taxable_amount + COALESCE(p_tax_amount, 0))) > 0.05 THEN
+        RAISE EXCEPTION 'Invalid financial calculations: total does not match subtotal - discount + tax';
+      END IF;
+    END;
+  END IF;
+
+  -- 1. If bill_id is provided, check if it exists (update flow)
+  IF v_bill_id IS NOT NULL AND EXISTS (SELECT 1 FROM bills WHERE id = v_bill_id) THEN
+    -- Verify ownership before update
+    IF NOT EXISTS (SELECT 1 FROM bills WHERE id = v_bill_id AND user_id = v_user_id) THEN
+      RAISE EXCEPTION 'Unauthorized: You do not own this bill';
+    END IF;
+
+    -- Update existing bill
+    UPDATE bills SET
+      customer_id = p_customer_id,
+      vehicle_id = p_vehicle_id,
+      kms_run = p_kms_run,
+      subtotal = p_subtotal,
+      tax_amount = p_tax_amount,
+      discount = p_discount,
+      total_amount = p_total_amount,
+      status = p_status,
+      payment_method = p_payment_method,
+      paid_amount = p_paid_amount,
+      notes = p_notes,
+      pdf_url = p_pdf_url,
+      payment_history = p_payment_history,
+      financial_year = v_financial_year,
+      created_at = COALESCE(p_created_at, created_at),
+      updated_at = NOW()
+    WHERE id = v_bill_id;
+  ELSE
+    -- Insert new bill flow
+    IF v_bill_id IS NULL THEN
+      v_bill_id := uuid_generate_v4();
+    END IF;
+
+    -- Calculate next bill_number atomically scoped to (user_id, financial_year)
+    SELECT COALESCE(MAX(bill_number), 0) + 1 INTO v_bill_number 
+    FROM bills 
+    WHERE user_id = v_user_id AND financial_year = v_financial_year;
+
+    INSERT INTO bills (
+      id, bill_number, financial_year, customer_id, vehicle_id, kms_run, subtotal, tax_amount, 
+      discount, total_amount, status, payment_method, paid_amount, notes, 
+      pdf_url, payment_history, user_id, created_at, updated_at
+    ) VALUES (
+      v_bill_id, v_bill_number, v_financial_year, p_customer_id, p_vehicle_id, p_kms_run, p_subtotal, p_tax_amount, 
+      p_discount, p_total_amount, p_status, p_payment_method, p_paid_amount, p_notes, 
+      p_pdf_url, p_payment_history, v_user_id, v_bill_created_at, NOW()
+    );
+  END IF;
+
+  -- 2. Insert items (only if p_items is provided and non-empty)
+  IF p_items IS NOT NULL AND jsonb_array_length(p_items) > 0 THEN
+    IF p_bill_id IS NOT NULL AND EXISTS (SELECT 1 FROM bills WHERE id = v_bill_id) THEN
+      DELETE FROM bill_items WHERE bill_id = v_bill_id;
+    END IF;
+
+    FOR v_item IN SELECT * FROM jsonb_to_recordset(p_items) AS x(
+      description TEXT,
+      quantity NUMERIC,
+      unit_price NUMERIC,
+      total_price NUMERIC,
+      sort_order INTEGER
+    ) LOOP
+      INSERT INTO bill_items (
+        bill_id, description, quantity, unit_price, total_price, sort_order, user_id
+      ) VALUES (
+        v_bill_id, v_item.description, v_item.quantity, v_item.unit_price, v_item.total_price, v_item.sort_order, v_user_id
+      );
+    END LOOP;
+  END IF;
+
+  -- Fetch the saved bill row to return
+  SELECT row_to_json(b) INTO v_response FROM bills b WHERE id = v_bill_id;
+  RETURN v_response;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+

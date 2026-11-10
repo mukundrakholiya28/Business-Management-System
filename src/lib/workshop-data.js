@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { generateId, normalizePhoneNumber } from "@/lib/helpers";
+import { getFinancialYearForDate } from "@/lib/diwali-calendar";
 
 export function isSupabaseReady() {
   return Boolean(supabase);
@@ -408,34 +409,46 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
 
   console.log("Saving bill via secure transaction RPC...");
 
+  const fy = bill.financial_year || getFinancialYearForDate(bill.created_at || new Date()).key;
+  const rpcParams = {
+    p_bill_id:         isEditing ? bill.id : (bill.id || null),
+    p_customer_id:     customerId,
+    p_vehicle_id:      vehicleId,
+    p_kms_run:         bill.kms_run ? Number(bill.kms_run) : null,
+    p_subtotal:        subtotal,
+    p_tax_amount:      tax_amount,
+    p_discount:        discount,
+    p_total_amount:    total_amount,
+    p_status:          status,
+    p_payment_method:  bill.payment_method || null,
+    p_paid_amount:     paid_amount,
+    p_notes:           bill.notes || null,
+    p_pdf_url:         bill.pdf_url || null,
+    p_payment_history: updatedHistory,
+    p_created_at:      bill.created_at || null,
+    p_items:           (itemPayload && itemPayload.length > 0) ? itemPayload : null, // JSONB array (or null to bypass update)
+    p_user_id:         userId,
+    p_financial_year:  fy,
+  };
+
   // Invoke RPC for transaction-safe database write
-  const { data: savedBillJson, error: rpcError } = await supabase.rpc(
+  let savedBillJson = null;
+  let { data: rpcData, error: rpcError } = await supabase.rpc(
     "save_bill_with_items",
-    {
-      p_bill_id:         isEditing ? bill.id : (bill.id || null),
-      p_customer_id:     customerId,
-      p_vehicle_id:      vehicleId,
-      p_kms_run:         bill.kms_run ? Number(bill.kms_run) : null,
-      p_subtotal:        subtotal,
-      p_tax_amount:      tax_amount,
-      p_discount:        discount,
-      p_total_amount:    total_amount,
-      p_status:          status,
-      p_payment_method:  bill.payment_method || null,
-      p_paid_amount:     paid_amount,
-      p_notes:           bill.notes || null,
-      p_pdf_url:         bill.pdf_url || null,
-      p_payment_history: updatedHistory,
-      p_created_at:      bill.created_at || null,
-      p_items:           (itemPayload && itemPayload.length > 0) ? itemPayload : null, // JSONB array (or null to bypass update)
-      p_user_id:         userId,
-    }
+    rpcParams
   );
+  if (rpcError && (rpcError.message?.includes("p_financial_year") || rpcError.code === "PGRST202")) {
+    const { p_financial_year, ...fallbackParams } = rpcParams;
+    const res = await supabase.rpc("save_bill_with_items", fallbackParams);
+    rpcData = res.data;
+    rpcError = res.error;
+  }
 
   if (rpcError) {
     console.error("RPC Error saving bill:", rpcError);
     throw new Error(rpcError.message);
   }
+  savedBillJson = rpcData;
 
   return {
     bill:  savedBillJson,

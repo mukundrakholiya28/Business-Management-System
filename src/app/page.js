@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import Navbar from "@/components/Navbar";
 import { useProtectedRoute } from "@/context/AuthContext";
 import { ArrowUpRight, Car, TrendingUp } from "lucide-react";
@@ -11,6 +11,13 @@ import { useRouter } from "next/navigation";
 import { loadWorkshopData, saveBillWithItems } from "@/lib/data-layer";
 import { useAuth } from "@/context/AuthContext";
 import { useReconnectReload } from "@/hooks/useReconnectReload";
+import {
+  getFinancialYearForDate,
+  getCurrentFinancialYear,
+  getAvailableFinancialYears,
+  filterBillsByFinancialYear,
+} from "@/lib/diwali-calendar";
+import DiwaliYearSelector from "@/components/DiwaliYearSelector";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -62,6 +69,7 @@ export default function DashboardPage() {
   const [bills, setBills]         = useState([]);
   const [loadingData, setLoadingData] = useState(true);
   const [error, setError]         = useState(null);
+  const [selectedYear, setSelectedYear] = useState(() => getCurrentFinancialYear().key);
 
   const fetchData = useCallback(() => {
     let mounted = true;
@@ -82,19 +90,35 @@ export default function DashboardPage() {
   // Auto-reload data when internet reconnects
   useReconnectReload(fetchData);
 
-  // ── Computed stats ──────────────────────────────────────────────────────────
-  const allTimeRevenue = totalRevenue(bills);
-  const invStats       = invoiceStats(bills);
+  // ── Available Diwali financial years ─────────────────────────────────────────
+  const availableYears = useMemo(() => getAvailableFinancialYears(bills), [bills]);
+  const activeYearObj  = useMemo(
+    () => availableYears.find((y) => y.key === selectedYear),
+    [availableYears, selectedYear]
+  );
 
-  const pendingAmount = bills
-    .reduce((s, b) => {
-      if (b.status === "pending") return s + Number(b.total_amount);
-      if (b.status === "partially_paid") return s + (Number(b.total_amount) - Number(b.paid_amount || 0));
-      return s;
-    }, 0);
+  // ── Filter bills for selected Diwali accounting cycle ───────────────────────
+  const displayedBills = useMemo(
+    () => filterBillsByFinancialYear(bills, selectedYear),
+    [bills, selectedYear]
+  );
 
-  const recentBills = [...bills]
-    .sort((a, b) => b.bill_number - a.bill_number)
+  // ── Computed stats for selected Diwali year ─────────────────────────────────
+  const yearRevenue = totalRevenue(displayedBills);
+  const invStats    = invoiceStats(displayedBills);
+
+  const pendingAmount = displayedBills.reduce((s, b) => {
+    if (b.status === "pending") return s + Number(b.total_amount);
+    if (b.status === "partially_paid") return s + (Number(b.total_amount) - Number(b.paid_amount || 0));
+    return s;
+  }, 0);
+
+  const recentBills = [...displayedBills]
+    .sort((a, b) => {
+      const timeDiff = new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+      if (timeDiff !== 0) return timeDiff;
+      return (b.bill_number ?? 0) - (a.bill_number ?? 0);
+    })
     .slice(0, 5);
 
   const handleStatusChange = async (bill, newStatus) => {
@@ -133,29 +157,37 @@ export default function DashboardPage() {
         <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 py-7">
 
           {/* Header */}
-          <div className="mb-7 animate-fade-in">
-            <h1 className="text-xl font-semibold text-gray-900">Dashboard</h1>
-            <p className="text-xs text-gray-400 mt-1">
-              Workshop overview · {new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
-            </p>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-7 animate-fade-in">
+            <div>
+              <h1 className="text-xl font-semibold text-gray-900">Dashboard</h1>
+              <p className="text-xs text-gray-400 mt-1">
+                Workshop overview · {new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+              </p>
+            </div>
+            <DiwaliYearSelector
+              selectedYear={selectedYear}
+              onChange={setSelectedYear}
+              availableYears={availableYears}
+            />
           </div>
 
           {/* Stats */}
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 mb-7 stagger">
             <StatCard
               label="Total Revenue"
-              value={formatCurrency(allTimeRevenue)}
-              trendLabel="All time"
+              value={formatCurrency(yearRevenue)}
+              trendLabel={selectedYear === "all" ? "All time" : (activeYearObj?.label || "Selected Year")}
             />
             <StatCard
               label="Pending Amount"
               value={formatCurrency(pendingAmount)}
+              trendLabel={selectedYear === "all" ? "All time" : (activeYearObj?.label || "Selected Year")}
             />
             <StatCard
               label="Total Invoices"
               value={invStats.value}
               trend={invStats.trend}
-              trendLabel={invStats.trendLabel}
+              trendLabel={selectedYear === "all" ? "All time" : (activeYearObj?.label || "Selected Year")}
             />
           </div>
 
@@ -167,16 +199,16 @@ export default function DashboardPage() {
               <div className="px-5 pt-4 pb-3">
                 <SectionHeader
                   title="Recent Invoices"
-                  subtitle="Latest billing activity"
+                  subtitle={selectedYear === "all" ? "Latest billing activity (All time)" : `Invoices for ${activeYearObj?.label || "Selected Year"}`}
                   action={
-                    <Link href="/billing" className="flat-btn text-xs">
+                    <Link href={`/billing?year=${selectedYear}`} className="flat-btn text-xs">
                       View All <ArrowUpRight size={12} strokeWidth={1.5} />
                     </Link>
                   }
                 />
               </div>
               {recentBills.length === 0 ? (
-                <p className="text-xs text-gray-400 py-8 text-center">No invoices yet.</p>
+                <p className="text-xs text-gray-400 py-8 text-center">No invoices for this Diwali year.</p>
               ) : (
                 <table className="w-full text-sm">
                   <thead>
@@ -193,6 +225,7 @@ export default function DashboardPage() {
                     {recentBills.map((bill) => {
                       const customer = customers.find((c) => c.id === bill.customer_id);
                       const vehicle  = vehicles.find((v) => v.id === bill.vehicle_id);
+                      const billFy = bill.financial_year || getFinancialYearForDate(bill.created_at).key;
                       return (
                         <tr
                           key={bill.id}
@@ -200,7 +233,12 @@ export default function DashboardPage() {
                           className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors cursor-pointer"
                         >
                           <td className="py-3 px-5 font-medium text-gray-900 whitespace-nowrap">
-                            INV-{bill.bill_number}
+                            <span className="font-semibold">INV-{bill.bill_number}</span>
+                            {selectedYear === "all" && (
+                              <span className="ml-2 text-[10px] font-normal px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">
+                                {billFy}
+                              </span>
+                            )}
                           </td>
                           <td className="py-3 px-5 text-gray-600 hidden sm:table-cell">
                             {customer?.name}

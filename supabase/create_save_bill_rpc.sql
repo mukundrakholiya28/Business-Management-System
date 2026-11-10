@@ -1,5 +1,6 @@
 -- ============================================================
 -- Transaction-safe Bill Creation and Update Function
+-- With Diwali Financial Year Support
 -- Run this in your Supabase SQL Editor
 -- ============================================================
 
@@ -20,11 +21,14 @@ CREATE OR REPLACE FUNCTION save_bill_with_items(
   p_payment_history JSONB,
   p_created_at TIMESTAMPTZ,
   p_items JSONB,
-  p_user_id UUID
+  p_user_id UUID,
+  p_financial_year TEXT DEFAULT NULL
 ) RETURNS JSONB AS $$
 DECLARE
   v_bill_id UUID := p_bill_id;
   v_bill_number INTEGER;
+  v_financial_year TEXT := p_financial_year;
+  v_bill_created_at TIMESTAMPTZ := COALESCE(p_created_at, NOW());
   v_item RECORD;
   v_response JSONB;
   v_user_id UUID;
@@ -40,8 +44,22 @@ BEGIN
     RAISE EXCEPTION 'Not authenticated';
   END IF;
 
-  -- Validate financial calculations on server-side if items are provided
-  IF p_items IS NOT NULL THEN
+  -- Auto-determine financial_year from created_at if not passed
+  IF v_financial_year IS NULL OR v_financial_year = '' THEN
+    v_financial_year := CASE
+      WHEN v_bill_created_at < '2021-11-05' THEN '2020-2021'
+      WHEN v_bill_created_at >= '2021-11-05' AND v_bill_created_at < '2022-10-25' THEN '2021-2022'
+      WHEN v_bill_created_at >= '2022-10-25' AND v_bill_created_at < '2023-11-13' THEN '2022-2023'
+      WHEN v_bill_created_at >= '2023-11-13' AND v_bill_created_at < '2024-11-01' THEN '2023-2024'
+      WHEN v_bill_created_at >= '2024-11-01' AND v_bill_created_at < '2025-10-21' THEN '2024-2025'
+      WHEN v_bill_created_at >= '2025-10-21' AND v_bill_created_at < '2026-11-09' THEN '2025-2026'
+      WHEN v_bill_created_at >= '2026-11-09' AND v_bill_created_at < '2027-10-30' THEN '2026-2027'
+      ELSE '2027-2028'
+    END;
+  END IF;
+
+  -- Validate financial calculations on server-side only if valid items array is provided
+  IF p_items IS NOT NULL AND jsonb_array_length(p_items) > 0 THEN
     DECLARE
       v_calculated_subtotal NUMERIC := 0;
       v_taxable_amount NUMERIC := 0;
@@ -93,6 +111,7 @@ BEGIN
       notes = p_notes,
       pdf_url = p_pdf_url,
       payment_history = p_payment_history,
+      financial_year = v_financial_year,
       created_at = COALESCE(p_created_at, created_at),
       updated_at = NOW()
     WHERE id = v_bill_id;
@@ -102,25 +121,24 @@ BEGIN
       v_bill_id := uuid_generate_v4();
     END IF;
 
-    -- Calculate next bill_number atomically inside transaction with write lock on bills
-    -- to prevent sequence gaps/collisions
+    -- Calculate next bill_number atomically inside transaction scoped to (user_id, financial_year)
     SELECT COALESCE(MAX(bill_number), 0) + 1 INTO v_bill_number 
     FROM bills 
-    WHERE user_id = v_user_id;
+    WHERE user_id = v_user_id AND financial_year = v_financial_year;
 
     INSERT INTO bills (
-      id, bill_number, customer_id, vehicle_id, kms_run, subtotal, tax_amount, 
+      id, bill_number, financial_year, customer_id, vehicle_id, kms_run, subtotal, tax_amount, 
       discount, total_amount, status, payment_method, paid_amount, notes, 
       pdf_url, payment_history, user_id, created_at, updated_at
     ) VALUES (
-      v_bill_id, v_bill_number, p_customer_id, p_vehicle_id, p_kms_run, p_subtotal, p_tax_amount, 
+      v_bill_id, v_bill_number, v_financial_year, p_customer_id, p_vehicle_id, p_kms_run, p_subtotal, p_tax_amount, 
       p_discount, p_total_amount, p_status, p_payment_method, p_paid_amount, p_notes, 
-      p_pdf_url, p_payment_history, v_user_id, COALESCE(p_created_at, NOW()), NOW()
+      p_pdf_url, p_payment_history, v_user_id, v_bill_created_at, NOW()
     );
   END IF;
 
-  -- 2. Insert items (only if p_items is provided)
-  IF p_items IS NOT NULL THEN
+  -- 2. Insert items (only if p_items is provided and non-empty)
+  IF p_items IS NOT NULL AND jsonb_array_length(p_items) > 0 THEN
     -- If updating, delete existing items first
     IF p_bill_id IS NOT NULL AND EXISTS (SELECT 1 FROM bills WHERE id = v_bill_id) THEN
       DELETE FROM bill_items WHERE bill_id = v_bill_id;

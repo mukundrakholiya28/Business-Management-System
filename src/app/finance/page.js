@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
@@ -8,6 +8,13 @@ import { PageSkeleton } from "@/components/ui";
 import { formatCurrency, formatDate } from "@/lib/helpers";
 import { loadWorkshopData } from "@/lib/data-layer";
 import { useReconnectReload } from "@/hooks/useReconnectReload";
+import {
+  getFinancialYearForDate,
+  getCurrentFinancialYear,
+  getAvailableFinancialYears,
+  filterBillsByFinancialYear,
+} from "@/lib/diwali-calendar";
+import DiwaliYearSelector from "@/components/DiwaliYearSelector";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
@@ -168,6 +175,7 @@ export default function FinancePage() {
   const [bills, setBills]             = useState([]);
   const [customers, setCustomers]     = useState([]);
   const [loadingData, setLoadingData] = useState(true);
+  const [selectedYear, setSelectedYear] = useState(() => getCurrentFinancialYear().key);
   const [period, setPeriod]           = useState("all");
   const [customRange, setCustomRange] = useState({ start: "", end: "" });
 
@@ -192,7 +200,14 @@ export default function FinancePage() {
     return () => { m = false; };
   });
 
-  const filtered    = useMemo(() => filterBills(bills, period, customRange), [bills, period, customRange]);
+  const availableYears = useMemo(() => getAvailableFinancialYears(bills), [bills]);
+  const activeYearObj  = useMemo(
+    () => availableYears.find((y) => y.key === selectedYear),
+    [availableYears, selectedYear]
+  );
+
+  const yearBills   = useMemo(() => filterBillsByFinancialYear(bills, selectedYear), [bills, selectedYear]);
+  const filtered    = useMemo(() => filterBills(yearBills, period, customRange), [yearBills, period, customRange]);
   const stats       = useMemo(() => calcStats(filtered), [filtered]);
   const trendData   = useMemo(() => buildTrendData(filtered, period), [filtered, period]);
 
@@ -271,9 +286,16 @@ export default function FinancePage() {
         <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 py-7">
 
           {/* Header */}
-          <div className="mb-6 animate-fade-in">
-            <h1 className="text-xl font-semibold text-gray-900">Finance</h1>
-            <p className="text-xs text-gray-400 mt-1">Revenue & billing analytics for your workshop</p>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6 animate-fade-in">
+            <div>
+              <h1 className="text-xl font-semibold text-gray-900">Finance</h1>
+              <p className="text-xs text-gray-400 mt-1">Revenue & billing analytics for your workshop</p>
+            </div>
+            <DiwaliYearSelector
+              selectedYear={selectedYear}
+              onChange={setSelectedYear}
+              availableYears={availableYears}
+            />
           </div>
 
           {/* Period picker */}

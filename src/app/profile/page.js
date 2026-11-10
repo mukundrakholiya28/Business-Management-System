@@ -5,13 +5,15 @@ import Navbar from "@/components/Navbar";
 import { useProtectedRoute, useAuth } from "@/context/AuthContext";
 import { loadProfile, saveProfile } from "@/lib/data-layer";
 import { PageSkeleton } from "@/components/ui";
-import { Building2, CreditCard, FileText, Phone, Mail, MapPin, Save, HardDrive } from "lucide-react";
+import { Building2, CreditCard, FileText, Phone, Mail, MapPin, Save, HardDrive, Sparkles } from "lucide-react";
 import BackupRestoreSection from "@/components/BackupRestoreSection";
+import DiwaliSettingsSection from "@/components/DiwaliSettingsSection";
 
 const SECTIONS = [
   { id: "company",  label: "Company",          icon: Building2 },
   { id: "payment",  label: "Payment & Bank",   icon: CreditCard },
   { id: "invoice",  label: "Invoice",          icon: FileText   },
+  { id: "diwali",   label: "Diwali Year",      icon: Sparkles   },
   { id: "backup",   label: "Backup & Restore", icon: HardDrive  },
 ];
 
@@ -72,7 +74,7 @@ export default function ProfilePage() {
                 Company details, payment info and invoice defaults — used on printed invoices and bills
               </p>
             </div>
-            {activeSection !== "backup" && (
+            {activeSection !== "backup" && activeSection !== "diwali" && (
               <button
                 onClick={handleSave}
                 disabled={saving}
@@ -213,6 +215,15 @@ export default function ProfilePage() {
                     </div>
                   </div>
                 </>
+              )}
+
+              {/* ── Diwali Accounting Year ── */}
+              {activeSection === "diwali" && (
+                <DiwaliSettingsSection
+                  onMigrated={() => {
+                    showToast("Past invoices re-sequenced successfully");
+                  }}
+                />
               )}
 
               {/* ── Backup & Restore ── */}

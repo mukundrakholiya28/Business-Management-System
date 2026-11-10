@@ -27,6 +27,7 @@ import {
   setAppSetting,
   getAppSetting,
 } from "./local-repo";
+import { getFinancialYearForDate } from "./diwali-calendar";
 
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -238,6 +239,7 @@ async function executePushOp(op, currentUserId) {
     }
 
     const userId = currentUserId;
+    const fy = effectiveBill.financial_year || getFinancialYearForDate(effectiveBill.created_at).key;
 
     // Filter valid items or null
     const validItems = (Array.isArray(items) && items.length > 0)
@@ -270,13 +272,22 @@ async function executePushOp(op, currentUserId) {
       p_created_at:      effectiveBill.created_at ?? null,
       p_items:           (validItems && validItems.length > 0) ? validItems : null,
       p_user_id:         userId,
+      p_financial_year:  fy,
     };
 
-    const { data: savedBill, error: rpcError } = await supabase.rpc(
+    let savedBill = null;
+    let { data: rpcData, error: rpcError } = await supabase.rpc(
       "save_bill_with_items",
       rpcParams
     );
+    if (rpcError && (rpcError.message?.includes("p_financial_year") || rpcError.code === "PGRST202")) {
+      const { p_financial_year, ...fallbackParams } = rpcParams;
+      const res = await supabase.rpc("save_bill_with_items", fallbackParams);
+      rpcData = res.data;
+      rpcError = res.error;
+    }
     if (rpcError) throw new Error(rpcError.message);
+    savedBill = rpcData;
 
     // Update local bill with server-assigned bill_number + UUID confirmation
     if (savedBill) {
@@ -288,6 +299,7 @@ async function executePushOp(op, currentUserId) {
             ...localBill,
             id:              savedBill.id,
             bill_number:     savedBill.bill_number,
+            financial_year:  savedBill.financial_year || fy,
             updated_at:      savedBill.updated_at,
             server_revision: savedBill.updated_at,
           }));
@@ -302,6 +314,7 @@ async function executePushOp(op, currentUserId) {
           await db.bills.put(syncedRow({
             ...localBill,
             bill_number:     savedBill.bill_number,
+            financial_year:  savedBill.financial_year || fy,
             updated_at:      savedBill.updated_at,
             server_revision: savedBill.updated_at,
           }));
@@ -570,10 +583,11 @@ async function mergeServerRow(db, tableName, serverRow, userId) {
 
   // Deduplication check for bills:
   if (tableName === "bills" && serverRow.bill_number) {
+    const serverFy = serverRow.financial_year || getFinancialYearForDate(serverRow.created_at).key;
     const existingBills = await store
       .where("bill_number")
       .equals(serverRow.bill_number)
-      .filter((b) => !b.is_deleted)
+      .filter((b) => !b.is_deleted && (b.financial_year === serverFy || (!b.financial_year && getFinancialYearForDate(b.created_at).key === serverFy)))
       .toArray();
 
     for (const existing of existingBills) {
@@ -635,6 +649,10 @@ async function mergeServerRow(db, tableName, serverRow, userId) {
   // Merge: server wins for SYNCED rows, server wins for rows we don't have
   await store.put(syncedRow({
     ...serverRow,
+    // Ensure financial_year is stamped on bills
+    financial_year: tableName === "bills"
+      ? (serverRow.financial_year || localRow?.financial_year || getFinancialYearForDate(serverRow.created_at).key)
+      : undefined,
     // Preserve local-only metadata fields
     pdf_url:    serverRow.pdf_url ?? localRow?.pdf_url ?? null,
     is_deleted: 0,  // If the server returned the row, it exists — not deleted

@@ -54,6 +54,11 @@ export function getDb() {
     salary_records: null,
   });
 
+  // Version 6: adds financial_year index to bills for Diwali accounting cycles
+  db.version(6).stores({
+    bills: "&id, customer_id, vehicle_id, user_id, financial_year, bill_number, status, sync_status, is_deleted, updated_at, created_at",
+  });
+
   _db = db;
   return db;
 }

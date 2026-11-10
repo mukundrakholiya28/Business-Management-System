@@ -22,6 +22,7 @@ import {
   syncedRow,
 } from "./local-db";
 import { normalizePhoneNumber, generateId } from "./helpers";
+import { getFinancialYearForDate } from "./diwali-calendar";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -132,7 +133,8 @@ export async function loadWorkshopData() {
   requireBrowser();
   const db = getDb();
 
-  // Run cleanup migrations asynchronously in background
+  // Run cleanup and Diwali cycle migrations asynchronously in background
+  migrateExistingBillsToDiwaliYears(db).catch(() => {});
   cleanupDuplicateBills(db).catch(() => {});
   cleanupOrphanQueueOps(db).catch(() => {});
 
@@ -145,21 +147,27 @@ export async function loadWorkshopData() {
   ]);
 
   // Sort bills DESC by bill_number (most recent first)
-  rawBills.sort((a, b) => (b.bill_number ?? 0) - (a.bill_number ?? 0));
+  rawBills.sort((a, b) => {
+    const timeDiff = new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+    if (timeDiff !== 0) return timeDiff;
+    return (b.bill_number ?? 0) - (a.bill_number ?? 0);
+  });
 
-  // Deduplicate in-memory by bill_number and ID so the UI NEVER sees duplicate invoices
-  const seenBillNumbers = new Set();
+  // Deduplicate in-memory by (financial_year + bill_number) and ID
+  const seenBillKeys = new Set();
   const seenBillIds = new Set();
   const bills = [];
   for (const b of rawBills) {
     if (seenBillIds.has(b.id)) continue;
     seenBillIds.add(b.id);
 
+    const fy = b.financial_year || getFinancialYearForDate(b.created_at).key;
     if (b.bill_number != null && b.bill_number > 0) {
-      if (seenBillNumbers.has(b.bill_number)) continue;
-      seenBillNumbers.add(b.bill_number);
+      const key = `${fy}_${b.bill_number}`;
+      if (seenBillKeys.has(key)) continue;
+      seenBillKeys.add(key);
     }
-    bills.push(b);
+    bills.push({ ...b, financial_year: fy });
   }
 
   // Deduplicate bill items:
@@ -500,14 +508,13 @@ export async function saveBillWithItems({ bill, items, isEditing, userId }) {
     payment_history = [{ date: ts, amount: paid_amount, method: bill.payment_method || "cash" }];
   }
 
-  // ── Assign local bill_number ──────────────────────────────────────────────
-  // Use an index query on user_id instead of full table scan
+  // ── Assign local bill_number scoped to Diwali Financial Year ──────────────
+  const fy = bill.financial_year || getFinancialYearForDate(bill.created_at || ts).key;
   let bill_number = bill.bill_number;
   if (!isEditing || !bill_number) {
-    // Get just the bill_number column for this user, sorted DESC — much faster
     const topBill = await db.bills
       .where("user_id").equals(userId || "")
-      .filter((b) => !b.is_deleted)
+      .filter((b) => !b.is_deleted && (b.financial_year === fy || (!b.financial_year && getFinancialYearForDate(b.created_at).key === fy)))
       .toArray()
       .then((rows) => rows.reduce((max, b) => Math.max(max, b.bill_number ?? 0), 0));
     bill_number = topBill + 1;
@@ -520,6 +527,7 @@ export async function saveBillWithItems({ bill, items, isEditing, userId }) {
     ...existingBill,
     id:             billId,
     bill_number,
+    financial_year: fy,
     customer_id:    customerId,
     vehicle_id:     vehicleId,
     user_id:        userId,
@@ -801,6 +809,64 @@ export async function getFailedOps() {
 
 // ─── Duplicate & Orphan Cleanup Migrations ─────────────────────────────────────
 
+export async function migrateExistingBillsToDiwaliYears(db = getDb()) {
+  try {
+    const isDone = await getAppSetting("diwali_migration_v1_done");
+    if (isDone) return;
+
+    const allBills = await db.bills.toArray();
+    if (!allBills || allBills.length === 0) {
+      await setAppSetting("diwali_migration_v1_done", true);
+      return;
+    }
+
+    // Group live non-deleted bills by financial_year
+    const groups = new Map();
+    for (const b of allBills) {
+      if (b.is_deleted) continue;
+      const fy = b.financial_year || getFinancialYearForDate(b.created_at).key;
+      if (!groups.has(fy)) groups.set(fy, []);
+      groups.get(fy).push(b);
+    }
+
+    let modifiedCount = 0;
+    for (const [fy, group] of groups.entries()) {
+      // Sort chronologically ascending
+      group.sort((a, b) => {
+        const timeDiff = new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+        if (timeDiff !== 0) return timeDiff;
+        return (a.bill_number ?? 0) - (b.bill_number ?? 0);
+      });
+
+      for (let i = 0; i < group.length; i++) {
+        const bill = group[i];
+        const newNumber = i + 1;
+        if (bill.bill_number !== newNumber || bill.financial_year !== fy) {
+          const updated = {
+            ...bill,
+            bill_number: newNumber,
+            financial_year: fy,
+            sync_status: SYNC_STATUS.PENDING,
+            updated_at: new Date().toISOString(),
+          };
+          await db.bills.put(updated);
+          await enqueue("bills", bill.id, QUEUE_OP.UPDATE, {
+            bill: updated,
+          });
+          modifiedCount++;
+        }
+      }
+    }
+
+    await setAppSetting("diwali_migration_v1_done", true);
+    if (modifiedCount > 0) {
+      console.log(`[diwali-migration] Migrated and re-sequenced ${modifiedCount} bills into Diwali accounting cycles.`);
+    }
+  } catch (err) {
+    console.warn("[diwali-migration] Error migrating bills to Diwali cycles:", err);
+  }
+}
+
 export async function cleanupDuplicateBills(db = getDb()) {
   try {
     const allBills = await db.bills.toArray();
@@ -809,12 +875,14 @@ export async function cleanupDuplicateBills(db = getDb()) {
       if (b.is_deleted) continue;
       const num = b.bill_number;
       if (!num || num <= 0) continue;
-      if (!groups.has(num)) groups.set(num, []);
-      groups.get(num).push(b);
+      const fy = b.financial_year || getFinancialYearForDate(b.created_at).key;
+      const groupKey = `${fy}_${num}`;
+      if (!groups.has(groupKey)) groups.set(groupKey, []);
+      groups.get(groupKey).push(b);
     }
 
     let cleaned = 0;
-    for (const [num, dupGroup] of groups.entries()) {
+    for (const [groupKey, dupGroup] of groups.entries()) {
       if (dupGroup.length <= 1) continue;
 
       // Duplicate detected!
