@@ -412,7 +412,7 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
   const { data: savedBillJson, error: rpcError } = await supabase.rpc(
     "save_bill_with_items",
     {
-      p_bill_id:         isEditing ? bill.id : null,
+      p_bill_id:         isEditing ? bill.id : (bill.id || null),
       p_customer_id:     customerId,
       p_vehicle_id:      vehicleId,
       p_kms_run:         bill.kms_run ? Number(bill.kms_run) : null,
@@ -427,7 +427,7 @@ export async function saveBillWithItems({ bill, items, isEditing }) {
       p_pdf_url:         bill.pdf_url || null,
       p_payment_history: updatedHistory,
       p_created_at:      bill.created_at || null,
-      p_items:           itemPayload, // JSONB array (or null to bypass update)
+      p_items:           (itemPayload && itemPayload.length > 0) ? itemPayload : null, // JSONB array (or null to bypass update)
       p_user_id:         userId,
     }
   );

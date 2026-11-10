@@ -132,8 +132,12 @@ export async function loadWorkshopData() {
   requireBrowser();
   const db = getDb();
 
+  // Run cleanup migrations asynchronously in background
+  cleanupDuplicateBills(db).catch(() => {});
+  cleanupOrphanQueueOps(db).catch(() => {});
+
   // All four queries run in parallel using indexed is_deleted=0
-  const [customers, vehicles, bills, rawBillItems] = await Promise.all([
+  const [customers, vehicles, rawBills, rawBillItems] = await Promise.all([
     db.customers.where("is_deleted").equals(0).toArray(),
     db.vehicles.where("is_deleted").equals(0).toArray(),
     db.bills.where("is_deleted").equals(0).toArray(),
@@ -141,17 +145,42 @@ export async function loadWorkshopData() {
   ]);
 
   // Sort bills DESC by bill_number (most recent first)
-  bills.sort((a, b) => (b.bill_number ?? 0) - (a.bill_number ?? 0));
+  rawBills.sort((a, b) => (b.bill_number ?? 0) - (a.bill_number ?? 0));
+
+  // Deduplicate in-memory by bill_number and ID so the UI NEVER sees duplicate invoices
+  const seenBillNumbers = new Set();
+  const seenBillIds = new Set();
+  const bills = [];
+  for (const b of rawBills) {
+    if (seenBillIds.has(b.id)) continue;
+    seenBillIds.add(b.id);
+
+    if (b.bill_number != null && b.bill_number > 0) {
+      if (seenBillNumbers.has(b.bill_number)) continue;
+      seenBillNumbers.add(b.bill_number);
+    }
+    bills.push(b);
+  }
+
+  // Deduplicate bill items:
+  const seenItemKeys = new Set();
+  const billItems = [];
+  for (const item of rawBillItems) {
+    const key = `${item.bill_id}_${item.sort_order ?? 0}_${item.description}`;
+    if (seenItemKeys.has(key)) continue;
+    seenItemKeys.add(key);
+    billItems.push(item);
+  }
 
   // Sort items by sort_order within each bill
-  rawBillItems.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+  billItems.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
 
   return {
     source:    "local",
     customers,
     vehicles,
     bills,
-    billItems: rawBillItems,
+    billItems,
   };
 }
 
@@ -715,8 +744,8 @@ export async function getPendingQueueOps() {
 export async function getPendingCount() {
   const db = getDb();
   const pending = await db.sync_queue.where("status").equals(QUEUE_STATUS.PENDING).count();
-  const failed  = await db.sync_queue.where("status").equals(QUEUE_STATUS.FAILED).count();
-  return pending + failed;
+  const processing = await db.sync_queue.where("status").equals(QUEUE_STATUS.PROCESSING).count();
+  return pending + processing;
 }
 
 export async function getFailedCount() {
@@ -768,6 +797,82 @@ export async function getFailedOps() {
     .where("status")
     .equals(QUEUE_STATUS.FAILED)
     .toArray();
+}
+
+// ─── Duplicate & Orphan Cleanup Migrations ─────────────────────────────────────
+
+export async function cleanupDuplicateBills(db = getDb()) {
+  try {
+    const allBills = await db.bills.toArray();
+    const groups = new Map();
+    for (const b of allBills) {
+      if (b.is_deleted) continue;
+      const num = b.bill_number;
+      if (!num || num <= 0) continue;
+      if (!groups.has(num)) groups.set(num, []);
+      groups.get(num).push(b);
+    }
+
+    let cleaned = 0;
+    for (const [num, dupGroup] of groups.entries()) {
+      if (dupGroup.length <= 1) continue;
+
+      // Duplicate detected!
+      // Sort: prefer SYNCED rows, then prefer newest updated_at
+      dupGroup.sort((a, b) => {
+        if (a.sync_status === SYNC_STATUS.SYNCED && b.sync_status !== SYNC_STATUS.SYNCED) return -1;
+        if (b.sync_status === SYNC_STATUS.SYNCED && a.sync_status !== SYNC_STATUS.SYNCED) return 1;
+        return new Date(b.updated_at || 0) - new Date(a.updated_at || 0);
+      });
+
+      const canonical = dupGroup[0];
+      const duplicates = dupGroup.slice(1);
+
+      for (const dup of duplicates) {
+        // Re-parent items or delete duplicate items
+        const canonicalItems = await db.bill_items.where("bill_id").equals(canonical.id).filter((i) => !i.is_deleted).toArray();
+        const dupItems = await db.bill_items.where("bill_id").equals(dup.id).filter((i) => !i.is_deleted).toArray();
+
+        if (canonicalItems.length === 0 && dupItems.length > 0) {
+          await db.bill_items.where("bill_id").equals(dup.id).modify({ bill_id: canonical.id });
+        } else {
+          await db.bill_items.where("bill_id").equals(dup.id).delete();
+        }
+
+        // Remove queue ops for duplicate
+        await db.sync_queue.where("entity_id").equals(dup.id).delete();
+
+        // Delete duplicate bill row
+        await db.bills.delete(dup.id);
+        cleaned++;
+      }
+    }
+
+    if (cleaned > 0) {
+      console.log(`[local-repo] Cleaned up ${cleaned} duplicate bills from IndexedDB.`);
+    }
+  } catch (err) {
+    console.warn("[local-repo] cleanupDuplicateBills error:", err);
+  }
+}
+
+export async function cleanupOrphanQueueOps(db = getDb()) {
+  try {
+    const ops = await db.sync_queue.toArray();
+    for (const op of ops) {
+      if (op.status === QUEUE_STATUS.FAILED) {
+        const store = db[op.entity_type];
+        if (store) {
+          const entity = await store.get(op.entity_id);
+          if (!entity || entity.is_deleted) {
+            await db.sync_queue.delete(op._seq);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[local-repo] cleanupOrphanQueueOps error:", err);
+  }
 }
 
 // ─── App settings ─────────────────────────────────────────────────────────────

@@ -130,7 +130,7 @@ export async function runSync(opts = {}) {
     await pushLocalOps();
 
     // ── 2. Pull cloud changes ────────────────────────────────────────────────
-    await pullCloudChanges();
+    await pullCloudChanges(opts);
 
     // ── 3. Final state ───────────────────────────────────────────────────────
     const pending    = await getPendingCount();
@@ -144,6 +144,16 @@ export async function runSync(opts = {}) {
       lastSyncedAt: syncedAt,
       error:        failed > 0 ? `${failed} operation(s) failed` : null,
     });
+
+    // ── 4. Invalidate cache & notify UI to reload data ───────────────────────
+    try {
+      const { invalidateCache } = await import("./data-layer");
+      invalidateCache();
+    } catch {}
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(RECONNECT_EVENT));
+    }
 
   } catch (err) {
     console.error("[sync-engine] runSync error:", err);
@@ -219,32 +229,46 @@ async function executePushOp(op, currentUserId) {
     }
 
     // CREATE or UPDATE — use save_bill_with_items RPC
-    const { bill, items } = payload;
+    const { bill, items } = payload || {};
+    const db = getDb();
+    const effectiveBill = bill || (await db.bills.get(entity_id));
+    if (!effectiveBill) {
+      console.warn(`[sync-engine] bill ${entity_id} not found locally, skipping push.`);
+      return;
+    }
+
     const userId = currentUserId;
 
+    // Filter valid items or null
+    const validItems = (Array.isArray(items) && items.length > 0)
+      ? items
+          .filter((i) => i.description && i.description.trim())
+          .map((i, idx) => ({
+            description: i.description.trim(),
+            quantity:    Math.max(0, Number(i.quantity || 0)),
+            unit_price:  Math.max(0, Number(i.unit_price || 0)),
+            total_price: Math.max(0, Number(i.total_price || (i.quantity * i.unit_price) || 0)),
+            sort_order:  i.sort_order ?? idx,
+          }))
+      : null;
+
     const rpcParams = {
-      p_bill_id:         operation === QUEUE_OP.UPDATE ? entity_id : null,
-      p_customer_id:     bill.customer_id,
-      p_vehicle_id:      bill.vehicle_id,
-      p_kms_run:         bill.kms_run ?? null,
-      p_subtotal:        bill.subtotal,
-      p_tax_amount:      bill.tax_amount,
-      p_discount:        bill.discount,
-      p_total_amount:    bill.total_amount,
-      p_status:          bill.status,
-      p_payment_method:  bill.payment_method ?? null,
-      p_paid_amount:     bill.paid_amount,
-      p_notes:           bill.notes ?? null,
-      p_pdf_url:         bill.pdf_url ?? null,
-      p_payment_history: bill.payment_history ?? [],
-      p_created_at:      bill.created_at ?? null,
-      p_items:           items?.map((i) => ({
-        description: i.description,
-        quantity:    i.quantity,
-        unit_price:  i.unit_price,
-        total_price: i.total_price,
-        sort_order:  i.sort_order,
-      })) ?? null,
+      p_bill_id:         entity_id || effectiveBill.id || null,
+      p_customer_id:     effectiveBill.customer_id,
+      p_vehicle_id:      effectiveBill.vehicle_id,
+      p_kms_run:         effectiveBill.kms_run ? Number(effectiveBill.kms_run) : null,
+      p_subtotal:        Number(effectiveBill.subtotal || 0),
+      p_tax_amount:      Number(effectiveBill.tax_amount || 0),
+      p_discount:        Number(effectiveBill.discount || 0),
+      p_total_amount:    Number(effectiveBill.total_amount || 0),
+      p_status:          effectiveBill.status,
+      p_payment_method:  effectiveBill.payment_method ?? null,
+      p_paid_amount:     Number(effectiveBill.paid_amount || 0),
+      p_notes:           effectiveBill.notes ?? null,
+      p_pdf_url:         effectiveBill.pdf_url ?? null,
+      p_payment_history: effectiveBill.payment_history ?? [],
+      p_created_at:      effectiveBill.created_at ?? null,
+      p_items:           (validItems && validItems.length > 0) ? validItems : null,
       p_user_id:         userId,
     };
 
@@ -255,15 +279,38 @@ async function executePushOp(op, currentUserId) {
     if (rpcError) throw new Error(rpcError.message);
 
     // Update local bill with server-assigned bill_number + UUID confirmation
-    const db = getDb();
-    const localBill = await db.bills.get(entity_id);
-    if (localBill) {
-      await db.bills.put(syncedRow({
-        ...localBill,
-        bill_number:     savedBill.bill_number,
-        updated_at:      savedBill.updated_at,
-        server_revision: savedBill.updated_at,
-      }));
+    if (savedBill) {
+      if (savedBill.id && savedBill.id !== entity_id) {
+        const localBill = await db.bills.get(entity_id);
+        if (localBill) {
+          await db.bills.delete(entity_id);
+          await db.bills.put(syncedRow({
+            ...localBill,
+            id:              savedBill.id,
+            bill_number:     savedBill.bill_number,
+            updated_at:      savedBill.updated_at,
+            server_revision: savedBill.updated_at,
+          }));
+        }
+        await db.bill_items
+          .where("bill_id")
+          .equals(entity_id)
+          .modify({ bill_id: savedBill.id, sync_status: SYNC_STATUS.SYNCED });
+      } else {
+        const localBill = await db.bills.get(entity_id);
+        if (localBill) {
+          await db.bills.put(syncedRow({
+            ...localBill,
+            bill_number:     savedBill.bill_number,
+            updated_at:      savedBill.updated_at,
+            server_revision: savedBill.updated_at,
+          }));
+        }
+        await db.bill_items
+          .where("bill_id")
+          .equals(entity_id)
+          .modify({ sync_status: SYNC_STATUS.SYNCED });
+      }
     }
     return;
   }
@@ -426,15 +473,52 @@ const PULL_TABLES = [
   { name: "business_profile", orderCol: "updated_at" },
 ];
 
-async function pullCloudChanges() {
+async function pullCloudChanges(opts = {}) {
   if (!supabase) return;
 
   const { data: sessionData } = await supabase.auth.getSession();
   const userId = sessionData?.session?.user?.id;
   if (!userId) return;
 
+  const db = getDb();
+  if (opts.force) {
+    await db.sync_checkpoint.clear();
+  }
+
   for (const { name: tableName, orderCol } of PULL_TABLES) {
     await pullTable(tableName, orderCol, userId);
+  }
+
+  // Reconcile deleted rows from server
+  await reconcileDeletedRows(db, "bills", userId);
+  await reconcileDeletedRows(db, "customers", userId);
+  await reconcileDeletedRows(db, "vehicles", userId);
+}
+
+async function reconcileDeletedRows(db, tableName, userId) {
+  if (!supabase || !userId) return;
+  try {
+    const { data: serverRows, error } = await supabase
+      .from(tableName)
+      .select("id")
+      .eq("user_id", userId);
+
+    if (error || !serverRows) return;
+
+    const serverIdSet = new Set(serverRows.map((r) => r.id));
+    const localRows = await db[tableName]
+      .where("is_deleted")
+      .equals(0)
+      .filter((r) => r.sync_status === SYNC_STATUS.SYNCED && (r.user_id === userId || !r.user_id))
+      .toArray();
+
+    for (const localRow of localRows) {
+      if (!serverIdSet.has(localRow.id)) {
+        await db[tableName].update(localRow.id, { is_deleted: 1 });
+      }
+    }
+  } catch (e) {
+    console.warn(`[sync-engine] reconcileDeletedRows ${tableName} error:`, e.message);
   }
 }
 
@@ -483,6 +567,47 @@ async function pullTable(tableName, orderCol, userId) {
 async function mergeServerRow(db, tableName, serverRow, userId) {
   const store = db[tableName];
   if (!store) return;
+
+  // Deduplication check for bills:
+  if (tableName === "bills" && serverRow.bill_number) {
+    const existingBills = await store
+      .where("bill_number")
+      .equals(serverRow.bill_number)
+      .filter((b) => !b.is_deleted)
+      .toArray();
+
+    for (const existing of existingBills) {
+      if (existing.id !== serverRow.id) {
+        // Re-parent items to serverRow.id
+        await db.bill_items
+          .where("bill_id")
+          .equals(existing.id)
+          .modify({ bill_id: serverRow.id });
+
+        // Clean up sync_queue for duplicate
+        await db.sync_queue
+          .where("entity_id")
+          .equals(existing.id)
+          .delete();
+
+        // Delete duplicate local bill
+        await store.delete(existing.id);
+      }
+    }
+  }
+
+  // Deduplication check for bill_items:
+  if (tableName === "bill_items" && serverRow.bill_id) {
+    const existingItems = await store
+      .where("bill_id")
+      .equals(serverRow.bill_id)
+      .filter((i) => !i.is_deleted && i.id !== serverRow.id && i.description === serverRow.description && i.sort_order === serverRow.sort_order)
+      .toArray();
+
+    for (const dup of existingItems) {
+      await store.delete(dup.id);
+    }
+  }
 
   const localRow = await store.get(serverRow.id).catch(() => null);
 
@@ -548,12 +673,14 @@ export async function initialPopulate(userId) {
 // ─── Connectivity watcher ─────────────────────────────────────────────────────
 
 let reconnectTimer = null;
+let periodicTimer  = null;
+let realtimeChannel = null;
 
-// Broadcast channel so all tabs/components know when we reconnected
+// Broadcast channel so all tabs/components know when we reconnected or synced
 const RECONNECT_EVENT = "src-bms:reconnected";
 
 export function startConnectivityWatcher() {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined") return () => {};
 
   async function handleOnline() {
     clearTimeout(reconnectTimer);
@@ -561,8 +688,6 @@ export function startConnectivityWatcher() {
       const online = await probeConnectivity();
       if (online) {
         await runSync();
-        // Notify all listeners that we've reconnected so they can reload data
-        window.dispatchEvent(new CustomEvent(RECONNECT_EVENT));
       }
     }, 1500);
   }
@@ -571,17 +696,65 @@ export function startConnectivityWatcher() {
     await setState({ isOnline: false, status: "offline" });
   }
 
+  async function handleFocus() {
+    const online = await probeConnectivity();
+    if (online) {
+      await runSync();
+    }
+  }
+
   window.addEventListener("online",  handleOnline);
   window.addEventListener("offline", handleOffline);
+  window.addEventListener("focus",   handleFocus);
 
   document.addEventListener("visibilitychange", async () => {
     if (!document.hidden) await runSync();
   });
 
+  // Periodic background sync: every 20 seconds while online
+  clearInterval(periodicTimer);
+  periodicTimer = setInterval(async () => {
+    if (typeof navigator !== "undefined" && !navigator.onLine) return;
+    if (syncLock) return;
+    const online = await probeConnectivity();
+    if (online) {
+      await runSync();
+    }
+  }, 20_000);
+
+  // Supabase Realtime channel for instant cross-device updates
+  if (supabase) {
+    try {
+      if (realtimeChannel) {
+        supabase.removeChannel(realtimeChannel);
+      }
+      realtimeChannel = supabase
+        .channel("bms-realtime-sync")
+        .on("postgres_changes", { event: "*", schema: "public", table: "bills" }, () => {
+          runSync().catch(console.warn);
+        })
+        .on("postgres_changes", { event: "*", schema: "public", table: "customers" }, () => {
+          runSync().catch(console.warn);
+        })
+        .on("postgres_changes", { event: "*", schema: "public", table: "vehicles" }, () => {
+          runSync().catch(console.warn);
+        })
+        .subscribe();
+    } catch (e) {
+      console.warn("[sync-engine] Realtime channel setup skipped:", e);
+    }
+  }
+
   return () => {
     window.removeEventListener("online",  handleOnline);
     window.removeEventListener("offline", handleOffline);
+    window.removeEventListener("focus",   handleFocus);
     clearTimeout(reconnectTimer);
+    clearInterval(periodicTimer);
+    if (realtimeChannel && supabase) {
+      supabase.removeChannel(realtimeChannel);
+      realtimeChannel = null;
+    }
   };
 }
 

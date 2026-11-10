@@ -61,7 +61,7 @@ export function SyncProvider({ children, userId }) {
   const triggerSync = useCallback(async () => {
     try {
       const { runSync } = await import("@/lib/sync-engine");
-      await runSync();
+      await runSync({ force: true });
     } catch (err) {
       console.warn("[SyncContext] triggerSync error:", err);
     }
@@ -69,12 +69,13 @@ export function SyncProvider({ children, userId }) {
 
   const retryFailed = useCallback(async () => {
     try {
-      const [{ resetFailedOps }, { runSync }] = await Promise.all([
+      const [{ resetFailedOps, cleanupOrphanQueueOps }, { runSync }] = await Promise.all([
         import("@/lib/local-repo"),
         import("@/lib/sync-engine"),
       ]);
+      await cleanupOrphanQueueOps();
       await resetFailedOps();
-      await runSync();
+      await runSync({ force: true });
     } catch (err) {
       console.warn("[SyncContext] retryFailed error:", err);
     }
@@ -87,7 +88,7 @@ export function SyncProvider({ children, userId }) {
         import("@/lib/sync-engine"),
       ]);
       await clearFailedOps();
-      await runSync();
+      await runSync({ force: true });
     } catch (err) {
       console.warn("[SyncContext] clearFailed error:", err);
     }
