@@ -1010,7 +1010,8 @@ function CreateBillModal({ customers, vehicles, bills, bill, billItems, allBillI
 
   const buildBill = (overrideStatus) => {
     const billId     = bill?.id || generateId();
-    const billNumber = bill?.bill_number || (bills && bills.length > 0 ? Math.max(0, ...bills.map((b) => b.bill_number)) + 1 : 1);
+    // Bill number is auto-assigned by the data layer based on financial year
+    const billNumber = bill?.bill_number || null;
     
     let finalStatus = overrideStatus;
     if (finalStatus === "paid" || finalStatus === "partially_paid" || finalStatus === "pending") {

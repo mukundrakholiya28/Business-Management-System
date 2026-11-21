@@ -45,8 +45,8 @@ export default function Navbar() {
           </span>
         </Link>
 
-        {/* Desktop nav — absolutely centred */}
-        <nav className="hidden lg:flex items-center gap-0.5 absolute left-1/2 -translate-x-1/2">
+        {/* Desktop nav — tight to the brand */}
+        <nav className="hidden lg:flex items-center gap-0.5 ml-2">
           {navItems.map(({ href, label }) => {
             const isActive = pathname === href;
             return (
@@ -64,9 +64,6 @@ export default function Navbar() {
 
         {/* Right side — with deliberate gap after the centered nav */}
         <div className="flex items-center gap-1 ml-auto shrink-0">
-
-          {/* Extra spacing between nav and search on desktop */}
-          <div className="hidden lg:block w-4" />
 
           <GlobalSearch />
           <SyncIndicator />

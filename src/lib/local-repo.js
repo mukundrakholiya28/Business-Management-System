@@ -507,12 +507,33 @@ export async function saveBillWithItems({ bill, items, isEditing, userId }) {
   const fy = bill.financial_year || getFinancialYearForDate(bill.created_at || ts).key;
   let bill_number = bill.bill_number;
   if (!isEditing || !bill_number) {
-    const topBill = await db.bills
+    // When online, ask the server for the true max so local IndexedDB drift
+    // (e.g. after a re-sequence migration) can never cause stale numbering.
+    let serverMax = null;
+    try {
+      if (typeof navigator !== "undefined" && navigator.onLine) {
+        const { supabase } = await import("./supabase");
+        if (supabase && userId) {
+          const { data } = await supabase
+            .from("bills")
+            .select("bill_number")
+            .eq("user_id", userId)
+            .eq("financial_year", fy)
+            .order("bill_number", { ascending: false })
+            .limit(1)
+            .single();
+          if (data?.bill_number) serverMax = data.bill_number;
+        }
+      }
+    } catch { /* offline or error — fall back to local */ }
+
+    const localMax = await db.bills
       .where("user_id").equals(userId || "")
       .filter((b) => !b.is_deleted && (b.financial_year === fy || (!b.financial_year && getFinancialYearForDate(b.created_at).key === fy)))
       .toArray()
       .then((rows) => rows.reduce((max, b) => Math.max(max, b.bill_number ?? 0), 0));
-    bill_number = topBill + 1;
+
+    bill_number = Math.max(serverMax ?? 0, localMax) + 1;
   }
 
   const billId = isEditing ? bill.id : (isValidUUID(bill.id) ? bill.id : newId());

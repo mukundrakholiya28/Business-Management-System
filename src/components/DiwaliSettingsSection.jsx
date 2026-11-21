@@ -18,12 +18,47 @@ export default function DiwaliSettingsSection({ onMigrated }) {
     setMsg(null);
     try {
       const { getDb } = await import("@/lib/local-db");
-      const { migrateExistingBillsToDiwaliYears, setAppSetting } = await import("@/lib/local-repo");
+      const { setSyncCheckpoint, setAppSetting } = await import("@/lib/local-repo");
+      const { supabase } = await import("@/lib/supabase");
       const db = getDb();
-      // Allow re-running
-      await setAppSetting("diwali_migration_v1_done", false);
-      await migrateExistingBillsToDiwaliYears(db);
-      setMsg({ type: "success", text: "All past invoices successfully re-sequenced starting from INV-1 for each financial year!" });
+
+      // ── Step 1: Pull corrected bill numbers directly from Supabase ──────────
+      // Bypass the normal merge/conflict logic — server is the truth here.
+      setMsg({ type: "info", text: "Pulling corrected numbers from server…" });
+
+      const { data: serverBills, error } = await supabase
+        .from("bills")
+        .select("id, bill_number, financial_year, updated_at")
+        .order("created_at", { ascending: true });
+
+      if (error) throw new Error("Could not reach server: " + error.message);
+
+      // Overwrite every local bill's bill_number and financial_year directly —
+      // no conflict logic, server wins for these two fields only.
+      let fixed = 0;
+      for (const sb of serverBills) {
+        const local = await db.bills.get(sb.id);
+        if (!local) continue;
+        if (local.bill_number !== sb.bill_number || local.financial_year !== sb.financial_year) {
+          await db.bills.update(sb.id, {
+            bill_number:    sb.bill_number,
+            financial_year: sb.financial_year,
+            sync_status:    "synced",
+            updated_at:     sb.updated_at,
+          });
+          fixed++;
+        }
+      }
+
+      // ── Step 2: Reset sync checkpoint so next normal sync is clean ──────────
+      await setSyncCheckpoint("bills", null);
+      await setAppSetting("diwali_migration_v1_done", true);
+
+      const totalBills = serverBills.length;
+      setMsg({
+        type: "success",
+        text: `Done! ${fixed} of ${totalBills} local invoices updated to match server. Each financial year now starts from INV-1.`,
+      });
       if (onMigrated) onMigrated();
     } catch (err) {
       setMsg({ type: "error", text: err.message });
